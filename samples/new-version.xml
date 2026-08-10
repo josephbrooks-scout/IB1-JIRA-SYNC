@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<IB-1 version="1.0">
+  <NAME>Sample IB1 Steering Assistance</NAME>
+  <RELEASE-DATE>2026-02-15</RELEASE-DATE>
+  <IBN-REQUIRED>true</IBN-REQUIRED>
+  <IB-DESCRIPTION>
+    <IB-VARIANTS>
+      <IB-VARIANT>
+        <NAME>Demo vehicle</NAME>
+        <PRODUCT-ID>G5K</PRODUCT-ID>
+        <DESC>Steering Assistance</DESC>
+      </IB-VARIANT>
+    </IB-VARIANTS>
+    <VALIDITIES-REF>sample-new-version.tnr</VALIDITIES-REF>
+    <OBJECTIVES>
+      <OBJECTIVE>Flash ECU</OBJECTIVE>
+      <OBJECTIVE>Reset adaptation values</OBJECTIVE>
+      <OBJECTIVE>Read and document BZD data</OBJECTIVE>
+    </OBJECTIVES>
+  </IB-DESCRIPTION>
+  <PROCEDURES>
+    <PROCEDURE>
+      <NAME>Inbetriebnahme EPS SDV</NAME>
+      <BLOCK standardIBNB="false" P-relevant="true" KD-relevant="true" optional="false">
+        <NAME>reset_of_adaption_values</NAME>
+        <DESC>Reset customer parameters and learned steering travel values to their default values.</DESC>
+        <PARAMETERS>
+          <PARAMETER type="variable">
+            <KEY>Waiting time [ms]</KEY>
+            <DATATYPE>Integer</DATATYPE>
+            <VALUE>500</VALUE>
+          </PARAMETER>
+        </PARAMETERS>
+        <STEPS>
+          <STEP cyclic="false">
+            <NAME>start_routine_reset_of_adaption_values</NAME>
+            <RESTFUL-API-REQUEST>
+              <METHOD>POST</METHOD>
+              <URI>http://localhost:8000/api/v1/tasks/buds/start_routine</URI>
+              <INPUT>{"data":{"ecu_name":"0044_steering_assistance","routine":["steering_assistance","Reset of Adaption Values"],"session_type":"ExtendedDiagnostic","measurement_options":{"expected":{"Routine Status":"Routine Finished Correctly"}}}}</INPUT>
+              <OUTPUT>%TBD%</OUTPUT>
+            </RESTFUL-API-REQUEST>
+          </STEP>
+        </STEPS>
+        <DIAGNOSTIC-SESSION>Extended</DIAGNOSTIC-SESSION>
+      </BLOCK>
+    </PROCEDURE>
+  </PROCEDURES>
+</IB-1>
