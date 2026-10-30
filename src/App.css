@@ -619,6 +619,280 @@
   color: var(--muted);
 }
 
+.topbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.subpage-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.subpage-link:hover,
+.subpage-link:focus-visible {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.breadcrumb {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.breadcrumb a {
+  color: inherit;
+}
+
+.jira-setup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 16px;
+}
+
+.jira-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.92);
+  box-shadow: var(--shadow-soft);
+}
+
+.jira-options label,
+.jira-options__granularity {
+  display: grid;
+  gap: 4px;
+}
+
+.jira-options label > span,
+.jira-options__granularity > span,
+.jira-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.jira-options input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+}
+
+.jira-options input:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.jira-segment {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.jira-summary .spec-pair code {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.jira-summary .summary-metrics {
+  align-self: stretch;
+}
+
+.jira-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.jira-warnings {
+  margin: 0 0 16px;
+  padding: 12px 16px 12px 34px;
+  border: 1px solid color-mix(in srgb, var(--changed) 45%, white);
+  border-radius: 8px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--changed) 9%, white);
+  font-size: 14px;
+}
+
+.jira-ticket-row {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.jira-ticket strong,
+.jira-ticket .diff-entry__path {
+  overflow-wrap: anywhere;
+}
+
+.jira-group {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.jira-ticket--step {
+  --status-color: var(--teal);
+}
+
+.jira-ticket--hmi-step {
+  --status-color: var(--changed);
+}
+
+.jira-ticket--block {
+  --status-color: var(--line-strong);
+}
+
+.jira-detail {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding-bottom: 20px;
+}
+
+.jira-detail > :not(header) {
+  margin: 0 20px;
+}
+
+.jira-detail h2 {
+  overflow-wrap: anywhere;
+}
+
+.jira-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.jira-fields dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.jira-fields code,
+.jira-wiki,
+.jira-code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.jira-fields--compact {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.jira-description__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.jira-description {
+  display: grid;
+  gap: 18px;
+}
+
+.jira-section h3 {
+  margin: 0 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+
+.jira-section ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.jira-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.jira-table-wrap {
+  overflow-x: auto;
+}
+
+.jira-section table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.jira-section th,
+.jira-section td {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.jira-section th {
+  background: var(--teal-soft);
+}
+
+.jira-wiki,
+.jira-code {
+  max-height: 480px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.jira-ecu-details summary {
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.jira-ecu-details pre {
+  margin-top: 8px;
+}
+
+@media (max-width: 1100px) {
+  .jira-setup {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1100px) {
   .summary-strip,
   .diff-workspace {
@@ -689,5 +963,15 @@
 
   .status-segment {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .jira-options {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar__actions {
+    justify-content: flex-start;
   }
 }

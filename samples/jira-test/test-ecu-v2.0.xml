@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic IB1 used by tests; structure mirrors real IB1 files without any proprietary content. -->
+<IB-1 id="doc-1" version="2.0">
+  <NAME>0099_Test_ECU</NAME>
+  <RELEASE-DATE>2026-01-15</RELEASE-DATE>
+  <IB-DESCRIPTION>
+    <OBJECTIVES>
+      <OBJECTIVE>Commission the test ECU</OBJECTIVE>
+    </OBJECTIVES>
+    <SLAVES>
+      <SLAVE id="slave-1">
+        <NAME>Test Sensor</NAME>
+        <ECU-ID>00A1</ECU-ID>
+      </SLAVE>
+    </SLAVES>
+  </IB-DESCRIPTION>
+  <DIAG-INFOS>
+    <DIAG-INFO>
+      <DESC>Test control unit</DESC>
+      <DIAG-PROTOCOL>UDS</DIAG-PROTOCOL>
+      <TRANSPORT-PROTOCOL>DoIP</TRANSPORT-PROTOCOL>
+      <ECU-ID>0099</ECU-ID>
+      <PDX>
+        <NAME>TEST_PDX</NAME>
+        <ODXS>
+          <ODX><NAME>EV_Test_001</NAME><TYPE>ODX-D</TYPE><DESC>Base variant</DESC></ODX>
+        </ODXS>
+      </PDX>
+    </DIAG-INFO>
+  </DIAG-INFOS>
+  <PROCEDURES>
+    <PROCEDURE id="proc-1">
+      <NAME>IB1 [Production]</NAME>
+      <BLOCK id="block-std" standardIBNB="true" shortname="SFD_UNLOCK" version="3" P-relevant="true" KD-relevant="false" optional="false">
+        <NAME>SFD Entsperren</NAME>
+        <NAME_EN>SFD unlock</NAME_EN>
+        <DESC>Unlocks *protected* diagnostics | standard</DESC>
+        <CATEGORY>Security</CATEGORY>
+        <PARAMETERS>
+          <PARAMETER id="param-std" optional="false" type="input">
+            <KEY>unlock_type</KEY>
+            <DATATYPE>string</DATATYPE>
+            <VALUE>FST</VALUE>
+          </PARAMETER>
+        </PARAMETERS>
+        <LINKS>
+          <LINK><NAME>Spec</NAME><URL>https://example.com/sfd_unlock</URL></LINK>
+        </LINKS>
+      </BLOCK>
+      <BLOCK id="block-reset" standardIBNB="false" P-relevant="true" KD-relevant="true" optional="true">
+        <NAME>ECU Reset</NAME>
+        <DESC>Reset the ECU</DESC>
+        <DIAGNOSTIC-SESSION>Extended</DIAGNOSTIC-SESSION>
+        <PARAMETERS>
+          <PARAMETER id="param-wait" optional="false" type="input">
+            <KEY>wait_after_reset</KEY>
+            <DATATYPE>int</DATATYPE>
+            <VALUE>2500</VALUE>
+          </PARAMETER>
+        </PARAMETERS>
+        <STEPS>
+          <STEP id="step-reset" cyclic="false">
+            <NAME>ECU Reset [1101]</NAME>
+            <DESC>Hard reset</DESC>
+            <DIAG-SERVICE>
+              <SERVICE-IDENTIFIER>11</SERVICE-IDENTIFIER>
+              <LONG-NAME>ECU Reset / Hard Reset</LONG-NAME>
+              <SHORT-NAME>Reset_Hard</SHORT-NAME>
+            </DIAG-SERVICE>
+            <DIAG-PARAMETERS>
+              <DIAG-PARAMETER>
+                <LONG-NAME>Reset type</LONG-NAME>
+                <MESSAGE-TYPE>REQUEST</MESSAGE-TYPE>
+                <DATATYPE>uint8</DATATYPE>
+                <VALUE-PROXY><VALUE>01</VALUE></VALUE-PROXY>
+              </DIAG-PARAMETER>
+            </DIAG-PARAMETERS>
+          </STEP>
+          <STEP id="step-wait">
+            <NAME>Wartezeit</NAME>
+            <TIME-PARAMETER>
+              <DESC>Wait after reset</DESC>
+              <VALUE-PROXY><VALUE-REF ref="param-wait"/></VALUE-PROXY>
+            </TIME-PARAMETER>
+          </STEP>
+        </STEPS>
+      </BLOCK>
+      <BLOCK id="block-loop" standardIBNB="false">
+        <NAME>button_worker_check</NAME>
+        <STEPS>
+          <HMI-STEP id="hmi-1">
+            <NAME>Press button</NAME>
+            <HMI-PARAMETERS>
+              <HMI-PARAMETER id="hmi-param-1" type="output">
+                <KEY>text</KEY>
+                <VALUE-PROXY><VALUE>Press the window button</VALUE></VALUE-PROXY>
+              </HMI-PARAMETER>
+            </HMI-PARAMETERS>
+          </HMI-STEP>
+          <LOOP>
+            <NAME>Request result</NAME>
+            <POLLINTERVALL>100</POLLINTERVALL>
+            <TIMEOUT>5000</TIMEOUT>
+            <STEPS>
+              <STEP id="step-read">
+                <NAME>read_data: Button [0x1841]</NAME>
+                <RESTFUL-API-REQUEST>
+                  <METHOD>POST</METHOD>
+                  <URI>http://localhost:8000/api/v1/tasks/buds/read_data</URI>
+                  <INPUT>{"data":{"ecu_name":"0099_test","data":["Button"]}}</INPUT>
+                  <OUTPUT>%TBD%</OUTPUT>
+                </RESTFUL-API-REQUEST>
+              </STEP>
+              <BRANCH>
+                <NAME>Abort button actuated</NAME>
+                <IF>
+                  <NAME>Abort</NAME>
+                  <HMI-STEP id="hmi-abort">
+                    <NAME>Abort message</NAME>
+                  </HMI-STEP>
+                </IF>
+              </BRANCH>
+            </STEPS>
+          </LOOP>
+          <STEP id="step-read-2">
+            <NAME>read_data: Button [0x1841]</NAME>
+          </STEP>
+        </STEPS>
+      </BLOCK>
+      <SWITCH>
+        <NAME>Variant</NAME>
+        <CASE>
+          <NAME>LHD</NAME>
+          <BLOCKS>
+            <BLOCK id="block-case">
+              <NAME>coding</NAME>
+              <STEPS>
+                <STEP id="step-code"><NAME>write coding</NAME></STEP>
+              </STEPS>
+            </BLOCK>
+          </BLOCKS>
+        </CASE>
+      </SWITCH>
+    </PROCEDURE>
+  </PROCEDURES>
+</IB-1>

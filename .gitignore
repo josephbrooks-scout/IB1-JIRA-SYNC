@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local secrets (Jira API token)
+.env
+.env.*
+!.env.example
+
+# Sync run reports may contain confidential IB1 content
+ib1-sync-report*.json

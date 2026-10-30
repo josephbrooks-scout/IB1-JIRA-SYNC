@@ -1,6 +1,13 @@
-import { useDeferredValue, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
 import './App.css'
+import { JiraPreview } from './jira/JiraPreview.tsx'
+
+type AppMode = 'compare' | 'jira'
+
+// The Jira planner is the home page; the version comparison lives at #/compare.
+const COMPARE_HASH = '#/compare'
+const modeFromHash = (): AppMode => (window.location.hash === COMPARE_HASH ? 'compare' : 'jira')
 
 type SpecSide = 'baseline' | 'candidate'
 type DiffStatus = 'added' | 'removed' | 'changed'
@@ -181,6 +188,22 @@ const WORKFLOW_ELEMENT_TAGS = new Set([
 const IGNORED_ATTRIBUTES = new Set(['id'])
 
 function App() {
+  const [mode, setMode] = useState<AppMode>(modeFromHash)
+
+  useEffect(() => {
+    const syncMode = () => {
+      setMode(modeFromHash())
+      window.scrollTo(0, 0)
+    }
+
+    window.addEventListener('hashchange', syncMode)
+
+    return () => window.removeEventListener('hashchange', syncMode)
+  }, [])
+
+  useEffect(() => {
+    document.title = mode === 'compare' ? 'Compare IB1 Versions · IB1 Jira Tickets' : 'IB1 Jira Tickets'
+  }, [mode])
   const [baselineSpec, setBaselineSpec] = useState<ParsedSpec | null>(null)
   const [candidateSpec, setCandidateSpec] = useState<ParsedSpec | null>(null)
   const [baselineError, setBaselineError] = useState('')
@@ -286,19 +309,45 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">IB1 document comparator</p>
-          <h1>IB1 Spec Differ</h1>
+          {mode === 'jira' ? (
+            <p className="eyebrow">IB1 to Jira ticket planner</p>
+          ) : (
+            <nav className="breadcrumb" aria-label="Breadcrumb">
+              <a href="#/">IB1 Jira Tickets</a>
+              <span aria-hidden="true">/</span>
+              <span aria-current="page">Compare versions</span>
+            </nav>
+          )}
+          <h1>{mode === 'jira' ? 'IB1 Jira Tickets' : 'Compare IB1 Versions'}</h1>
         </div>
-        <button
-          className="export-button"
-          type="button"
-          disabled={!diffResult?.entries.length}
-          onClick={exportReport}
-        >
-          Export report
-        </button>
+        <div className="topbar__actions">
+          {mode === 'jira' ? (
+            <a className="subpage-link" href={COMPARE_HASH}>
+              Compare IB1 versions
+              <span aria-hidden="true">→</span>
+            </a>
+          ) : (
+            <>
+              <a className="subpage-link" href="#/">
+                <span aria-hidden="true">←</span>
+                Back to Jira tickets
+              </a>
+              <button
+                className="export-button"
+                type="button"
+                disabled={!diffResult?.entries.length}
+                onClick={exportReport}
+              >
+                Export report
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
+      <JiraPreview hidden={mode !== 'jira'} />
+
+      <div className="compare-view" hidden={mode !== 'compare'}>
       <section className="file-grid" aria-label="Specification files">
         <FileSlot
           title="Baseline spec"
@@ -365,6 +414,7 @@ function App() {
           </div>
         </section>
       )}
+      </div>
     </main>
   )
 }

@@ -1,6 +1,6 @@
 # Comparison Behavior
 
-IB1 Spec Differ reads files locally in the browser and converts them into comparable records before calculating differences. The input files are not uploaded to a server.
+This describes the `Compare IB1 versions` page (`#/compare`). It reads files locally in the browser and converts them into comparable records before calculating differences. The input files are not uploaded to a server.
 
 ## Same-Format Comparisons
 
