@@ -208,7 +208,7 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
           <div className="jira-options__granularity">
             <span>One ticket per</span>
             <div className="status-segment jira-segment" role="group" aria-label="Ticket granularity">
-              {(['step', 'block'] as const).map((value) => (
+              {(['block', 'step'] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -465,6 +465,10 @@ function TicketDetail({ plan, ticket, view, onView }: TicketDetailProps) {
 }
 
 function SectionView({ section }: { section: DescriptionSection }) {
+  if (section.kind === 'heading') {
+    return <h2 className="jira-step-heading">{section.title}</h2>
+  }
+
   return (
     <section className="jira-section">
       {section.title ? <h3>{section.title}</h3> : null}

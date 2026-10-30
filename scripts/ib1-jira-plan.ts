@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dry-run: converts an IB1 XML into a Jira ticket plan (JSON or Jira CSV import file). Nothing is sent to Jira.
 // Usage: npm run jira:plan -- <IB1.xml> [--format summary|json|csv] [--out file] [--project PRDFSI]
-//        [--parent PRDFSI-150] [--granularity step|block] [--child-type "Commissioning Step"] [--label extra]
+//        [--parent PRDFSI-150] [--granularity block|step] [--child-type "Commissioning Step"] [--label extra]
 import { writeFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { buildJiraTicketPlan, type TicketGranularity } from '../src/jira/ib1JiraPlan.ts'
@@ -15,7 +15,7 @@ const { values, positionals } = parseArgs({
     out: { type: 'string' },
     project: { type: 'string' },
     parent: { type: 'string' },
-    granularity: { type: 'string', default: 'step' },
+    granularity: { type: 'string', default: 'block' },
     'child-type': { type: 'string' },
     'ecu-type': { type: 'string' },
     label: { type: 'string', multiple: true },
@@ -26,7 +26,7 @@ const { values, positionals } = parseArgs({
 if (values.help || positionals.length !== 1) {
   console.log(
     'Usage: npm run jira:plan -- <IB1.xml> [--format summary|json|csv] [--out file] [--project PRDFSI]\n' +
-      '       [--parent PRDFSI-150] [--granularity step|block] [--child-type "Commissioning Step"] [--ecu-type "Electronic Control Unit"] [--label extra]',
+      '       [--parent PRDFSI-150] [--granularity block|step] [--child-type "Commissioning Step"] [--ecu-type "Electronic Control Unit"] [--label extra]',
   )
   process.exit(values.help ? 0 : 1)
 }

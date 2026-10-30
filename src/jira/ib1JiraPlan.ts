@@ -25,7 +25,7 @@ export const DEFAULT_JIRA_PLAN_OPTIONS: JiraPlanOptions = {
   ecuIssueType: 'Electronic Control Unit',
   childIssueType: 'Commissioning Step',
   ecuIssueKey: '',
-  granularity: 'step',
+  granularity: 'block',
   extraLabels: [],
 }
 
@@ -35,6 +35,7 @@ export type DescriptionSection =
   | { kind: 'list'; title: string; items: string[] }
   | { kind: 'table'; title: string; headers: string[]; rows: string[][] }
   | { kind: 'code'; title: string; language?: string; code: string }
+  | { kind: 'heading'; title: string }
 
 export type PlannedTicketKind = 'step' | 'hmi-step' | 'block'
 
@@ -335,6 +336,25 @@ function processBlock(block: XmlNode, context: PlanContext, state: BuildState) {
         describeStepAction(unit.element),
         unit.loops.join(' > '),
       ]),
+    })
+
+    // Full per-step detail, so one block ticket carries everything a step ticket would have.
+    units.forEach((unit, index) => {
+      const isHmi = unit.element.nodeName === 'HMI-STEP'
+      const stepName = singleLine(textOf(unit.element, 'NAME')) || (isHmi ? 'HMI step' : 'Step')
+      const overview = cleanFields({
+        'Step type': isHmi ? 'HMI step (worker interaction)' : 'Diagnostic step',
+        Action: describeStepAction(unit.element),
+        'Runs inside': unit.loops.join(' > '),
+        Cyclic: yesNo(attr(unit.element, 'cyclic')),
+      })
+
+      blockSections.push(
+        { kind: 'heading', title: `Step ${index + 1}: ${stepName}` },
+        { kind: 'fields', rows: Object.entries(overview) },
+        ...stepSections(unit.element, state),
+        ...(unit.notes.length ? [{ kind: 'list' as const, title: 'Conditional handling', items: unit.notes }] : []),
+      )
     })
   }
 

@@ -31,6 +31,8 @@ export function toJiraWikiMarkup(sections: DescriptionSection[], footerKey?: str
     const heading = section.title ? `h4. ${escapeWiki(section.title)}\n` : ''
 
     switch (section.kind) {
+      case 'heading':
+        return `----\nh3. ${escapeWiki(section.title)}`
       case 'fields':
         return `${heading}${section.rows.map(([key, value]) => `*${escapeWiki(key)}:* ${escapeWiki(value)}`).join('\n')}`
       case 'text':
@@ -58,6 +60,8 @@ export function toPlainText(sections: DescriptionSection[], footerKey?: string):
     const heading = section.title ? `${section.title.toUpperCase()}\n` : ''
 
     switch (section.kind) {
+      case 'heading':
+        return `=== ${section.title} ===`
       case 'fields':
         return `${heading}${section.rows.map(([key, value]) => `${key}: ${value}`).join('\n')}`
       case 'text':

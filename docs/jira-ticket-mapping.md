@@ -9,8 +9,8 @@ Code: [src/jira/ib1JiraPlan.ts](../src/jira/ib1JiraPlan.ts) (mapping) and [src/j
 ```text
 Vehicle / Traveller ticket (e.g. PRDFSI-35)      not touched by the tool
 └── Electronic Control Unit ticket (e.g. PRDFSI-150)   one per IB1 / ECU-ID
-    ├── [block] step ticket                           one per STEP / HMI-STEP (step mode)
-    └── block ticket                                  blocks without steps, or every block in block mode
+    ├── block ticket                                  one per BLOCK, steps in the description (default)
+    └── [block] step ticket                           one per STEP / HMI-STEP (only with --granularity step)
 ```
 
 ## ECU ticket
@@ -28,9 +28,15 @@ If no `ECU-ID` exists, the 4-character prefix of the IB1 name is used and a warn
 
 ## Child tickets
 
-**Step mode (default):** each `STEP` and `HMI-STEP` becomes a ticket titled `[block name] step name`. Blocks with no steps, which covers most standard blocks, become a single ticket titled with the block name.
+**Block mode (default):** one ticket per block, titled with the block name (this matches existing PRDFSI children such as `reset_of_all_adaptions`). The description has the block source, description and parameters, a `Steps` overview table (#, Step, Action, Runs inside), and then a section for every step, headed `Step N: step name`, with:
 
-**Block mode:** one ticket per block, with a steps table in the description. This matches how some existing PRDFSI children are named (for example `reset_of_all_adaptions`).
+- step type (diagnostic or HMI), action, the loop it runs inside, and whether it is cyclic;
+- the step description, REST request with request body and expected output, diagnostic service and parameters, wait time, HMI parameters, and TIS;
+- `Conditional handling` for branch content such as "Abort button actuated".
+
+A change to any step changes the block ticket, so the whole block is updated and reopened on a new IB1 version.
+
+**Step mode (`--granularity step`):** each `STEP` and `HMI-STEP` becomes its own ticket titled `[block name] step name`, with the same per-step detail. Blocks with no steps, which covers most standard blocks, become a single ticket titled with the block name.
 
 Structure handling:
 

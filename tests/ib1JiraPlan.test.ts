@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DOMParser } from '@xmldom/xmldom'
-import { buildJiraTicketPlan, type XmlNode } from '../src/jira/ib1JiraPlan.ts'
+import { buildJiraTicketPlan, type JiraPlanOptions, type XmlNode } from '../src/jira/ib1JiraPlan.ts'
 import { escapeWiki, ticketWikiDescription, toJiraCsv, toPlanJson } from '../src/jira/exporters.ts'
 
 const fixture = readFileSync(new URL('./fixtures/ib1-jira-sample.xml', import.meta.url), 'utf8')
@@ -10,8 +10,9 @@ function parse(xml: string): XmlNode {
   return new DOMParser().parseFromString(xml, 'text/xml') as unknown as XmlNode
 }
 
-function plan(options = {}) {
-  return buildJiraTicketPlan(parse(fixture), 'ib1-jira-sample.xml', options)
+// Most tests cover the step-level detail, so they use step mode; block mode (the default) has its own tests.
+function plan(options: Partial<JiraPlanOptions> = {}) {
+  return buildJiraTicketPlan(parse(fixture), 'ib1-jira-sample.xml', { granularity: 'step', ...options })
 }
 
 describe('buildJiraTicketPlan', () => {
@@ -84,9 +85,10 @@ describe('buildJiraTicketPlan', () => {
     expect(result.tickets[3].fields.Action).toBe('HMI: Press the window button')
   })
 
-  it('supports one ticket per block', () => {
-    const result = plan({ granularity: 'block' })
+  it('creates one ticket per block by default', () => {
+    const result = buildJiraTicketPlan(parse(fixture), 'ib1-jira-sample.xml')
 
+    expect(result.options.granularity).toBe('block')
     expect(result.tickets.map((ticket) => ticket.summary)).toEqual([
       'SFD unlock',
       'ECU Reset',
@@ -95,6 +97,25 @@ describe('buildJiraTicketPlan', () => {
     ])
     expect(result.tickets[2].fields.Steps).toBe('3')
     expect(result.tickets.every((ticket) => ticket.kind === 'block')).toBe(true)
+  })
+
+  it('puts every step with its full detail into the block ticket description', () => {
+    const tickets = plan({ granularity: 'block' }).tickets
+    const reset = tickets.find((ticket) => ticket.summary === 'ECU Reset')!
+    const button = tickets.find((ticket) => ticket.summary === 'button_worker_check')!
+    const wiki = ticketWikiDescription(button)
+
+    expect(reset.sections.filter((section) => section.kind === 'heading').map((section) => section.title)).toEqual([
+      'Step 1: ECU Reset [1101]',
+      'Step 2: Wartezeit',
+    ])
+    expect(JSON.stringify(reset.sections)).toContain('2500 (block parameter \\"wait_after_reset\\"')
+    expect(wiki).toContain('h4. Steps\n||\\#||Step||Action||Runs inside||')
+    expect(wiki).toContain('----\nh3. Step 2: read_data: Button \\[0x1841\\]')
+    expect(wiki).toContain('*Runs inside:* Request result (poll 100 ms, timeout 5000 ms)')
+    expect(wiki).toContain('{code:json}')
+    expect(wiki).toContain('Abort button actuated')
+    expect(wiki.indexOf('h3. Step 1: Press button')).toBeLessThan(wiki.indexOf('h3. Step 2'))
   })
 
   it('falls back to the name prefix and position keys when ids are missing', () => {

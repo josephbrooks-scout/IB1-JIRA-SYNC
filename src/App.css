@@ -831,6 +831,14 @@
   font-size: 15px;
 }
 
+.jira-step-heading {
+  margin: 10px 0 -6px;
+  padding-top: 14px;
+  border-top: 2px solid var(--line);
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
 .jira-section ul {
   margin: 0;
   padding-left: 20px;

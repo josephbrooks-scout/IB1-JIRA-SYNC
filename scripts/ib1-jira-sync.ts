@@ -22,7 +22,7 @@ const USAGE = `Usage: npm run jira:sync -- <IB1.xml | folder>... [options]
   --parent KEY            Existing ECU ticket, e.g. PRDFSI-150 (single file only; default: find by Diag Address)
   --create-ecu            Create the ECU ticket when none is found
   --vehicle KEY           Vehicle/Traveller parent for a newly created ECU ticket, e.g. PRDFSI-35
-  --granularity step|block  One ticket per step (default) or per block
+  --granularity block|step  One ticket per block with its steps in the description (default), or per step
   --adopt                 Link existing hand-made tickets whose names match instead of creating duplicates
   --allow-removals        Move tickets no longer in the IB1 to the "removed" status
   --ignore-unmanaged      Do not stop when the ECU has hand-made tickets resembling IB1 blocks/steps
@@ -41,7 +41,7 @@ const { values, positionals } = parseArgs({
     parent: { type: 'string' },
     'create-ecu': { type: 'boolean', default: false },
     vehicle: { type: 'string' },
-    granularity: { type: 'string', default: 'step' },
+    granularity: { type: 'string', default: 'block' },
     adopt: { type: 'boolean', default: false },
     'allow-removals': { type: 'boolean', default: false },
     'ignore-unmanaged': { type: 'boolean', default: false },

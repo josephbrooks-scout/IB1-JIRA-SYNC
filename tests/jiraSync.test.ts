@@ -167,7 +167,7 @@ function makePlan(xml = fixture, options: Partial<JiraPlanOptions> = {}) {
   return buildJiraTicketPlan(
     new DOMParser().parseFromString(xml, 'text/xml') as unknown as XmlNode,
     'sample.xml',
-    options,
+    { granularity: 'step', ...options },
   )
 }
 

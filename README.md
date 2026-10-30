@@ -1,6 +1,6 @@
 # IB1 Jira Tickets
 
-Turns IB1 commissioning specifications (raw XML) into Jira tickets: an `Electronic Control Unit` ticket per ECU with one child ticket per step or block. The home page previews the tickets for an IB1 file, and `npm run jira:sync` writes them to Jira and keeps them up to date when new IB1 versions arrive.
+Turns IB1 commissioning specifications (raw XML) into Jira tickets: an `Electronic Control Unit` ticket per ECU with one child ticket per block (steps listed in the ticket description). The home page previews the tickets for an IB1 file, and `npm run jira:sync` writes them to Jira and keeps them up to date when new IB1 versions arrive.
 
 A secondary page, `Compare IB1 versions` (`#/compare`), compares two IB1 specification versions side by side, with added, removed, and changed records highlighted in place. It reads generated HTML reports as well as XML.
 
@@ -41,11 +41,11 @@ The home page is the Jira ticket preview. For writing to Jira, also follow the o
 
 ## Jira Ticket Preview (Dry Run)
 
-The home page turns one IB1 XML into the Jira tickets it would create: an `Electronic Control Unit` parent plus one child ticket per step (or per block). The page itself sends nothing to Jira; you review the plan and can export it. Use `npm run jira:sync` (below) to write to Jira.
+The home page turns one IB1 XML into the Jira tickets it would create: an `Electronic Control Unit` parent plus one child ticket per block, with every step and its details in the ticket description. The page itself sends nothing to Jira; you review the plan and can export it. Use `npm run jira:sync` (below) to write to Jira.
 
 - Load the IB1 `.xml`. HTML reports are rejected because they lack the stable ids used to update tickets later.
 - Enter an `Existing ECU ticket` (for example `PRDFSI-150`) to attach the children to it; leave it blank to plan a new ECU ticket. The JQL shown on the ECU card finds an existing one.
-- `One ticket per` switches between `Step` (default) and `Block`. Blocks without steps, such as most standard blocks, always become one ticket.
+- `One ticket per` switches between `Block` (default; each step appears as a `Step N: name` section in the description) and `Step` (one ticket per step). Blocks without steps, such as most standard blocks, always become one ticket.
 - `Export Jira CSV` produces a file for the Jira Cloud CSV importer; `Export JSON` saves the full plan.
 
 The same plan is available from the command line (needs Node.js 22.18 or newer, which runs TypeScript directly):
@@ -69,9 +69,9 @@ One-time setup:
 
 ```bash
 # Preview against the existing EPS ECU ticket, linking hand-made tickets with matching names
-npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --granularity block --adopt
+npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --adopt
 # Same, but write to Jira
-npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --granularity block --adopt --apply
+npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --adopt --apply
 # A whole folder of IB1 files; each ECU ticket is found by its Diag Address
 npm run jira:sync -- path/to/inbox --apply --report ib1-sync-report.json
 npm run jira:sync -- --help
