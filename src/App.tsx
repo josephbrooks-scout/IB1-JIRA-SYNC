@@ -2,12 +2,15 @@ import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
 import './App.css'
 import { JiraPreview } from './jira/JiraPreview.tsx'
+import { ReviewPage } from './jira/ReviewPage.tsx'
 
-type AppMode = 'compare' | 'jira'
+type AppMode = 'compare' | 'jira' | 'review'
 
-// The Jira planner is the home page; the version comparison lives at #/compare.
+// The Jira planner is the home page; comparison and approvals are separate review pages.
 const COMPARE_HASH = '#/compare'
-const modeFromHash = (): AppMode => (window.location.hash === COMPARE_HASH ? 'compare' : 'jira')
+const REVIEW_HASH = '#/review'
+const modeFromHash = (): AppMode =>
+  window.location.hash === COMPARE_HASH ? 'compare' : window.location.hash === REVIEW_HASH ? 'review' : 'jira'
 
 type SpecSide = 'baseline' | 'candidate'
 type DiffStatus = 'added' | 'removed' | 'changed'
@@ -202,7 +205,12 @@ function App() {
   }, [])
 
   useEffect(() => {
-    document.title = mode === 'compare' ? 'Compare IB1 Versions · IB1 Jira Tickets' : 'IB1 Jira Tickets'
+    document.title =
+      mode === 'compare'
+        ? 'Compare IB1 Versions · IB1 Jira Tickets'
+        : mode === 'review'
+          ? 'Review Jira Changes · IB1 Jira Tickets'
+          : 'IB1 Jira Tickets'
   }, [mode])
   const [baselineSpec, setBaselineSpec] = useState<ParsedSpec | null>(null)
   const [candidateSpec, setCandidateSpec] = useState<ParsedSpec | null>(null)
@@ -309,43 +317,50 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          {mode === 'jira' ? (
-            <p className="eyebrow">IB1 to Jira ticket planner</p>
-          ) : (
+          <p className="brand-label">Scout Motors <span aria-hidden="true">/</span> Factory software</p>
+          {mode === 'compare' ? (
             <nav className="breadcrumb" aria-label="Breadcrumb">
               <a href="#/">IB1 Jira Tickets</a>
               <span aria-hidden="true">/</span>
               <span aria-current="page">Compare versions</span>
             </nav>
-          )}
-          <h1>{mode === 'jira' ? 'IB1 Jira Tickets' : 'Compare IB1 Versions'}</h1>
+          ) : mode === 'review' ? (
+            <nav className="breadcrumb" aria-label="Breadcrumb">
+              <a href="#/">IB1 Jira Tickets</a>
+              <span aria-hidden="true">/</span>
+              <span aria-current="page">Review Jira changes</span>
+            </nav>
+          ) : null}
+          <h1>{mode === 'jira' ? 'IB1 Jira Tickets' : mode === 'compare' ? 'Compare versions' : 'Review Jira changes'}</h1>
         </div>
         <div className="topbar__actions">
           {mode === 'jira' ? (
-            <a className="subpage-link" href={COMPARE_HASH}>
-              Compare IB1 versions
-              <span aria-hidden="true">→</span>
-            </a>
+            <>
+              <a className="subpage-link" href={COMPARE_HASH}>Compare IB1 versions <span aria-hidden="true">→</span></a>
+            </>
           ) : (
             <>
               <a className="subpage-link" href="#/">
                 <span aria-hidden="true">←</span>
                 Back to Jira tickets
               </a>
-              <button
-                className="export-button"
-                type="button"
-                disabled={!diffResult?.entries.length}
-                onClick={exportReport}
-              >
-                Export report
-              </button>
+              {mode === 'compare' ? (
+                <button
+                  className="export-button"
+                  type="button"
+                  disabled={!diffResult?.entries.length}
+                  onClick={exportReport}
+                >
+                  Export report
+                </button>
+              ) : null}
             </>
           )}
         </div>
       </header>
 
       <JiraPreview hidden={mode !== 'jira'} />
+      <ReviewPage hidden={mode !== 'review'} />
 
       <div className="compare-view" hidden={mode !== 'compare'}>
       <section className="file-grid" aria-label="Specification files">

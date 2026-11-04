@@ -1,14 +1,69 @@
 # IB1 Jira Tickets
 
-Turns IB1 commissioning specifications (raw XML) into Jira tickets: an `Electronic Control Unit` ticket per ECU with one child ticket per block (steps listed in the ticket description). The home page previews the tickets for an IB1 file, and `npm run jira:sync` writes them to Jira and keeps them up to date when new IB1 versions arrive.
+Turns IB1 commissioning specifications (raw XML) into Jira tickets: an `Electronic Control Unit` ticket per ECU, a child ticket per block, and nested sub-task tickets for each step. The home page previews the tickets for an IB1 file, and `npm run jira:sync` writes them to Jira and keeps them up to date when new IB1 versions arrive.
 
 A secondary page, `Compare IB1 versions` (`#/compare`), compares two IB1 specification versions side by side, with added, removed, and changed records highlighted in place. It reads generated HTML reports as well as XML.
 
 ## Who This Is For
 
-Factory software integration: get IB1 commissioning content into Jira (project `PRDFSI`) without retyping it, and keep the tickets current when a new IB1 version arrives. Tickets follow the existing hierarchy: Vehicle/Traveller → `Electronic Control Unit` → `Commissioning Step`.
+Factory software integration: get IB1 commissioning content into Jira (project `PRDFSI`) without retyping it, and keep the tickets current when a new IB1 version arrives. Tickets follow the hierarchy: Vehicle/Traveller → `Electronic Control Unit` → `Commissioning Step` block → `Workaround` step sub-task.
 
 The web page reads files locally in the browser; they are not uploaded to a server. Only `npm run jira:sync` talks to Jira, using your own API token.
+
+## Sharing With Teammates
+
+Preview/review website URL once Pages is enabled and deployment succeeds:
+<https://josephbrooks-scout.github.io/IB1-JIRA-SYNC/>.
+The intended website is publicly accessible; repository access is separately controlled by GitHub.
+It contains only the built application, not credentials, sample source documents, or Jira review reports.
+Uploaded files are processed in the visitor's browser. The hosted website never asks for or stores Jira tokens.
+
+Anyone can use the hosted XML preview and comparison without Jira credentials. To read or write Jira,
+each teammate must run the CLI on their own computer with their own Jira email and API token:
+
+```bash
+git clone https://github.com/josephbrooks-scout/IB1-JIRA-SYNC.git
+cd IB1-JIRA-SYNC
+npm ci
+cp .env.example .env
+```
+
+Repository access and Node.js 22.18 or newer are required. Edit the new `.env` locally:
+set `JIRA_BASE_URL` to your Jira site, `JIRA_EMAIL` to your own account email,
+and `JIRA_API_TOKEN` to a token created by that account.
+Do not use another person's credentials. Jira permissions still control what each account can read or change.
+No shared token, GitHub Actions Jira secret, or `VITE_` credential is needed.
+`.env` is ignored by Git and is not loaded by Vite; the CLI loads it locally.
+Environment variables already set in your shell take precedence over `.env`.
+
+```bash
+# On your own computer: read Jira and generate a review report; no Jira writes
+npm run jira:sync -- path/to/IB1.xml --parent PRDFSI-150 --report review.json
+```
+
+Open the hosted website's **Review changes** page, load your local `review.json`,
+review every item, and export approvals. Then, on the same computer:
+
+```bash
+npm run jira:sync -- path/to/IB1.xml --parent PRDFSI-150 --apply --approval-file path/to/ib1-jira-approvals.json
+```
+
+Use the same planning options for the report and apply commands. Keep reports and approvals private:
+they can contain document and Jira content. If no required credentials are configured, the CLI stops
+with an explicit missing-credentials error before contacting Jira. A static GitHub Pages site
+does not provide direct Jira login or sync; those operations remain local to each user.
+
+### Website Deployment
+
+The [Pages workflow](.github/workflows/pages.yml) validates `main` and uploads only `dist/`
+to GitHub Pages. Enable **Settings → Pages → Source: GitHub Actions** on GitHub.
+It requires no Jira credentials or repository secrets. Every push to `main` redeploys the site.
+The repository does not need to be made public. Pages availability for private repositories depends
+on the GitHub account plan; never change repository visibility to work around that limitation.
+The current account rejected Pages activation for this private repository with
+`Your current plan does not support GitHub Pages for this repository.`
+The URL will not work until Pages is enabled on a supported plan or the app is deployed
+to another approved static host. Teammates can still clone and run it locally.
 
 ## Requirements
 
@@ -41,12 +96,15 @@ The home page is the Jira ticket preview. For writing to Jira, also follow the o
 
 ## Jira Ticket Preview (Dry Run)
 
-The home page turns one IB1 XML into the Jira tickets it would create: an `Electronic Control Unit` parent plus one child ticket per block, with every step and its details in the ticket description. The page itself sends nothing to Jira; you review the plan and can export it. Use `npm run jira:sync` (below) to write to Jira.
+The home page turns one IB1 XML into the Jira tickets it would create: an `Electronic Control Unit` parent, one `Commissioning Step` child per block, and one `Workaround` sub-task per IB1 step. Each step ticket is nested under its block ticket. The page itself sends nothing to Jira; you review the plan and can export it. Use `npm run jira:sync` (below) to write to Jira.
 
 - Load the IB1 `.xml`. HTML reports are rejected because they lack the stable ids used to update tickets later.
-- Enter an `Existing ECU ticket` (for example `PRDFSI-150`) to attach the children to it; leave it blank to plan a new ECU ticket. The JQL shown on the ECU card finds an existing one.
-- `One ticket per` switches between `Block` (default; each step appears as a `Step N: name` section in the description) and `Step` (one ticket per step). Blocks without steps, such as most standard blocks, always become one ticket.
-- `Export Jira CSV` produces a file for the Jira Cloud CSV importer; `Export JSON` saves the full plan.
+- Follow **Load document → Preview tickets → Review changes**. The first two stages only preview the XML; the review stage requires a separate Jira dry-run report.
+- Enter an `Existing ECU ticket (optional)` (for example `PRDFSI-150`) to attach the children to it; leave it blank to plan a new ECU ticket. Expand `Find this ECU in Jira` on the ECU card to see its lookup query.
+- Expand **Advanced settings** to change the project, issue types, labels, or ticket structure. `Block + steps` is the default: a block ticket with separate nested step sub-tasks. `Block only` puts step details in the block description; `Step only` creates flat step tickets under the ECU.
+- Expand **Download ticket plan** for `Export Jira CSV` (for the Jira Cloud CSV importer) or `Export JSON` (the full plan).
+
+The interface uses the supplied Scout brand reference: Harvest Orange (`#FF5432`), Chalk (`#FAF9F5`), and Moonstone (`#131F26`). System sans-serif and monospace fonts are used until licensed Scout font files and a standalone wordmark asset are supplied; no Scout logo is recreated from the reference image. Added, changed, and removed items use distinct text labels and semantic colors as well as filter counts.
 
 The same plan is available from the command line (needs Node.js 22.18 or newer, which runs TypeScript directly):
 
@@ -60,26 +118,30 @@ How IB1 content maps to tickets is described in [docs/jira-ticket-mapping.md](do
 
 ## Jira Sync (Writes To Jira)
 
-`npm run jira:sync` sends the same plan to Jira Cloud through the REST API. It is a **dry run by default**: it reads Jira, prints what it would do, and writes nothing until you add `--apply`.
+`npm run jira:sync` compares an IB1 plan with Jira Cloud through the REST API. It is a **dry run by default**. Every proposed create, update, removal, or version refresh must be reviewed and checked off in the browser before the CLI will write anything.
 
 One-time setup:
 
 1. Create an API token at <https://id.atlassian.com/manage-profile/security/api-tokens> (ideally for a service account).
-2. Copy `.env.example` to `.env` and fill in `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`. `.env` is git-ignored; never commit it.
+2. Copy `.env.example` to `.env` and fill in `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`. The defaults use `Commissioning Step` for block tickets and `Workaround` for step sub-tasks; both issue types must be available in the Jira project. `.env` is git-ignored; never commit it.
 
 ```bash
-# Preview against the existing EPS ECU ticket, linking hand-made tickets with matching names
-npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --adopt
-# Same, but write to Jira
-npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --adopt --apply
+# Generate a Jira comparison report (writes nothing to Jira)
+npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --report review.json
+# Open http://localhost:5173/#/review, upload review.json, choose accept/keep/merge,
+# check off every proposed change, then export ib1-jira-approvals.json.
+# Apply only the reviewed decisions; stale Jira/source snapshots are rejected.
+npm run jira:sync -- path/to/IB1_0044_EPS.xml --parent PRDFSI-150 --apply --approval-file ib1-jira-approvals.json
 # A whole folder of IB1 files; each ECU ticket is found by its Diag Address
-npm run jira:sync -- path/to/inbox --apply --report ib1-sync-report.json
+npm run jira:sync -- path/to/inbox --report review.json
 npm run jira:sync -- --help
 ```
 
-To try the sync safely, `samples/jira-test/` holds a made-up IB1 for a fake ECU 0099 in several versions (2.0 to 2.3). Run `test-ecu-v2.0.xml` with `--create-ecu --apply`, then the later versions with `--parent <new ECU key> --apply`, and delete the test tickets afterwards.
+For each action, choose to accept the incoming change, keep the current Jira content, or manually edit a merged summary/description when available. Additions must be explicitly approved; removals must be explicitly approved to move the ticket to Not Relevant. The approval file is bound to the exact Jira/source review; rerun the dry run and review again if either changes. Direct `--apply` without a matching approval file is blocked.
 
-Routine changes are applied automatically; risky ones are held or block the file. Exit code `2` means something needs a person to look at it. The rules are in [docs/jira-ticket-mapping.md](docs/jira-ticket-mapping.md#sync-rules).
+The **Added / Changed / Removed** filters only change which actions are displayed; they do not approve or exclude changes. Review progress and approval export still cover every proposed change across all files, including actions hidden by a filter. Snapshot details are available in an expandable panel.
+
+The browser review compares the proposed IB1 content with the current Jira content. Git branch baselines and conflict checks are not yet integrated. Exit code `2` means a plan is blocked or review is incomplete. The rules are in [docs/jira-ticket-mapping.md](docs/jira-ticket-mapping.md#sync-rules).
 
 ## Compare IB1 Versions (Secondary Page)
 

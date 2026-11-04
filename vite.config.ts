@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
+  base: './',
+  // Jira credentials belong to the local CLI, never to the browser build.
+  envDir: false,
   plugins: [react()],
 })

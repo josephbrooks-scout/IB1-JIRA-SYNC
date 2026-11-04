@@ -9,12 +9,13 @@ export type XmlNode = {
   getAttribute?: (name: string) => string | null
 }
 
-export type TicketGranularity = 'step' | 'block'
+export type TicketGranularity = 'step' | 'block' | 'nested'
 
 export type JiraPlanOptions = {
   projectKey: string
   ecuIssueType: string
   childIssueType: string
+  stepIssueType: string
   ecuIssueKey: string
   granularity: TicketGranularity
   extraLabels: string[]
@@ -24,8 +25,9 @@ export const DEFAULT_JIRA_PLAN_OPTIONS: JiraPlanOptions = {
   projectKey: 'PRDFSI',
   ecuIssueType: 'Electronic Control Unit',
   childIssueType: 'Commissioning Step',
+  stepIssueType: 'Workaround',
   ecuIssueKey: '',
-  granularity: 'block',
+  granularity: 'nested',
   extraLabels: [],
 }
 
@@ -49,6 +51,7 @@ export type PlannedTicket = {
   path: string[]
   blockKey: string
   blockName: string
+  parentIbKey?: string
   fields: Record<string, string>
   sections: DescriptionSection[]
 }
@@ -99,6 +102,7 @@ const MAX_SUMMARY_LENGTH = 255
 
 type PlanContext = {
   procedure: string
+  groups: string[]
   caseLabel: string
 }
 
@@ -165,7 +169,7 @@ export function buildJiraTicketPlan(
 
   childElements(child(root, 'PROCEDURES'), 'PROCEDURE').forEach((procedure) => {
     state.stats.procedures += 1
-    walkContainer(procedure, { procedure: textOf(procedure, 'NAME'), caseLabel: '' }, state)
+    walkContainer(procedure, { procedure: textOf(procedure, 'NAME'), groups: [], caseLabel: '' }, state)
   })
 
   if (state.stats.blocks === 0) {
@@ -206,6 +210,9 @@ function walkContainer(container: XmlNode, context: PlanContext, state: BuildSta
       processBlock(element, context, state)
     } else if (element.nodeName === 'BLOCKS') {
       walkContainer(element, context, state)
+    } else if (element.nodeName === 'GROUP') {
+      const groupName = textOf(element, 'NAME')
+      walkContainer(element, { ...context, groups: groupName ? [...context.groups, groupName] : context.groups }, state)
     } else if (element.nodeName === 'SWITCH') {
       const switchName = textOf(element, 'NAME') || 'Switch'
 
@@ -227,10 +234,11 @@ function processBlock(block: XmlNode, context: PlanContext, state: BuildState) {
   const isOptional = attr(block, 'optional') === 'true'
   const caseName = context.caseLabel.split(': ').slice(1).join(': ')
   const blockTitle = caseName ? `${blockName} (${caseName})` : blockName
-  const blockPath = [context.procedure, context.caseLabel, `Block: ${blockName}`].filter(Boolean)
+  const blockPath = [context.procedure, ...context.groups, context.caseLabel, `Block: ${blockName}`].filter(Boolean)
   const blockKey = makeIbKey(state, block, blockPath)
   const blockFields = cleanFields({
     Procedure: context.procedure,
+    Group: context.groups.join(' > '),
     'Switch case': context.caseLabel,
     Block: blockName,
     'Block (original name)': englishName && englishName !== name ? name : '',
@@ -337,7 +345,9 @@ function processBlock(block: XmlNode, context: PlanContext, state: BuildState) {
         unit.loops.join(' > '),
       ]),
     })
+  }
 
+  if (options.granularity !== 'nested') {
     // Full per-step detail, so one block ticket carries everything a step ticket would have.
     units.forEach((unit, index) => {
       const isHmi = unit.element.nodeName === 'HMI-STEP'
@@ -379,6 +389,43 @@ function processBlock(block: XmlNode, context: PlanContext, state: BuildState) {
     fields: cleanFields({ ...blockFields, Steps: String(units.length) }),
     sections: blockSections,
   })
+
+  if (options.granularity === 'nested') {
+    units.forEach((unit) => {
+      const stepElement = unit.element
+      const isHmi = stepElement.nodeName === 'HMI-STEP'
+      const stepName = singleLine(textOf(stepElement, 'NAME')) || (isHmi ? 'HMI step' : 'Step')
+      const stepPath = [...blockPath, ...unit.loops.map((loop) => `Loop: ${loop}`), stepName]
+
+      pushTicket(state, {
+        ibKey: makeIbKey(state, stepElement, stepPath),
+        sourceId: attr(stepElement, 'id'),
+        kind: isHmi ? 'hmi-step' : 'step',
+        issueType: options.stepIssueType,
+        summary: `[${blockTitle}] ${stepName}`,
+        labels: sanitizeLabels([...baseLabels, 'ib1-step', ...(isHmi ? ['hmi'] : [])]),
+        path: stepPath,
+        blockKey,
+        blockName: blockTitle,
+        parentIbKey: blockKey,
+        fields: cleanFields({
+          ...blockFields,
+          Step: stepName,
+          'Step type': isHmi ? 'HMI step (worker interaction)' : 'Diagnostic step',
+          Action: describeStepAction(stepElement),
+          'Runs inside': unit.loops.join(' > '),
+          Cyclic: yesNo(attr(stepElement, 'cyclic')),
+        }),
+        sections: [
+          ...ibSourceSections(state, blockFields, unit.loops),
+          ...stepSections(stepElement, state),
+          ...(unit.notes.length
+            ? [{ kind: 'list' as const, title: 'Conditional handling', items: unit.notes }]
+            : []),
+        ],
+      })
+    })
+  }
 }
 
 function pushTicket(state: BuildState, ticket: PlannedTicket) {
@@ -477,6 +524,7 @@ function ibSourceSections(
       title: 'IB1 source',
       rows: Object.entries(
         cleanFields({
+          'ECU name': source.ibName,
           'IB1 document': `${source.ibName}${source.version ? ` v${source.version}` : ''}`,
           'Release date': source.releaseDate,
           ECU: state.ecuId,

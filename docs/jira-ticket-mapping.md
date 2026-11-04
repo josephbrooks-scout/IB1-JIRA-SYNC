@@ -1,6 +1,6 @@
 # IB1 to Jira Ticket Mapping
 
-This describes how the `Jira tickets` view and `npm run jira:plan` turn one IB1 XML into a Jira ticket plan. The current version is a **dry run**: it previews tickets and exports CSV/JSON but never writes to Jira.
+This describes how the `Jira tickets` view and `npm run jira:plan` turn one IB1 XML into a Jira ticket plan. The browser planner is read-only. Jira writes through `npm run jira:sync` require a reviewed approval file.
 
 Code: [src/jira/ib1JiraPlan.ts](../src/jira/ib1JiraPlan.ts) (mapping) and [src/jira/exporters.ts](../src/jira/exporters.ts) (Jira markup, CSV, JSON).
 
@@ -9,9 +9,11 @@ Code: [src/jira/ib1JiraPlan.ts](../src/jira/ib1JiraPlan.ts) (mapping) and [src/j
 ```text
 Vehicle / Traveller ticket (e.g. PRDFSI-35)      not touched by the tool
 └── Electronic Control Unit ticket (e.g. PRDFSI-150)   one per IB1 / ECU-ID
-    ├── block ticket                                  one per BLOCK, steps in the description (default)
-    └── [block] step ticket                           one per STEP / HMI-STEP (only with --granularity step)
+    └── Commissioning Step block ticket                one per BLOCK (default)
+        └── Workaround step sub-task                    one per STEP / HMI-STEP
 ```
+
+The PRDFSI project exposes `Commissioning Step` as a standard issue type and `Workaround` as a sub-task issue type. This lets Jira represent the IB1 parent/child relationship instead of placing block and step tickets as siblings. Configure alternative project issue types with `JIRA_CHILD_ISSUE_TYPE` and `JIRA_STEP_ISSUE_TYPE`; the step issue type must be a sub-task type.
 
 ## ECU ticket
 
@@ -28,18 +30,21 @@ If no `ECU-ID` exists, the 4-character prefix of the IB1 name is used and a warn
 
 ## Child tickets
 
-**Block mode (default):** one ticket per block, titled with the block name (this matches existing PRDFSI children such as `reset_of_all_adaptions`). The description has the block source, description and parameters, a `Steps` overview table (#, Step, Action, Runs inside), and then a section for every step, headed `Step N: step name`, with:
+**Nested mode (default):** one `Commissioning Step` ticket per block, titled with the block name, and one `Workaround` sub-task per `STEP`/`HMI-STEP`, titled `[block name] step name`. The block description includes the ECU name and ID, IB1 source, block description and parameters, and a `Steps` overview table (#, Step, Action, Runs inside). Each step sub-task gets its own full step detail:
+
+The ECU name comes from the matched ECU ticket's Jira **Summary** when syncing to an existing ECU; when creating a new ECU, it comes from the IB1 name.
 
 - step type (diagnostic or HMI), action, the loop it runs inside, and whether it is cyclic;
 - the step description, REST request with request body and expected output, diagnostic service and parameters, wait time, HMI parameters, and TIS;
 - `Conditional handling` for branch content such as "Abort button actuated".
 
-A change to any step changes the block ticket, so the whole block is updated and reopened on a new IB1 version.
+A change to a block updates the block ticket; a change to an individual step updates that step sub-task. Each ticket is independently reviewed before apply.
 
-**Step mode (`--granularity step`):** each `STEP` and `HMI-STEP` becomes its own ticket titled `[block name] step name`, with the same per-step detail. Blocks with no steps, which covers most standard blocks, become a single ticket titled with the block name.
+**Block-only mode (`--granularity block`):** steps are included in each block ticket description. **Step-only mode (`--granularity step`):** step tickets are flat children of the ECU, and blocks without steps become a single ticket.
 
 Structure handling:
 
+- Nested `GROUP` elements are traversed. Group names appear in each block's source fields and ticket path; every block across every procedure group is planned.
 - `NAME_EN` is preferred over the German `NAME` for standard blocks.
 - Blocks inside `SWITCH/CASE` get the case name appended: `[coding (LHD)] write coding`.
 - `LOOP`s do not become tickets. Their inner steps do, with the loop name, poll interval and timeout in a `Runs inside` field.
@@ -59,23 +64,32 @@ The key is scoped by ECU because IB1 revision notes show UUIDs being copied betw
 
 ## Sync rules
 
-`npm run jira:sync` stores the key on each ticket it creates or adopts, as the hidden issue property `ib1.sync` (key, content hash, IB1 name and version). Re-running against the same or a newer IB1 compares by that key:
+`npm run jira:sync` stores the key on each ticket it creates or adopts, as the hidden issue property `ib1.sync` (key, content hash, IB1 name and version). A dry-run report compares current Jira content with the incoming source and is reviewed in `#/review`. Re-running against the same or a newer IB1 compares by that key:
 
 | Situation | What happens |
 | --- | --- |
-| New step/block | Ticket created under the ECU ticket |
-| Content changed | Summary/description updated, ticket moved back to `Open` with a comment. If the workflow has no way back to `Open`, the label `ib1-spec-changed` is added instead |
-| Only version or date changed | Hidden property refreshed; no notification, no status change |
+| New block | `Commissioning Step` ticket created under the ECU |
+| New step | `Workaround` sub-task created under its block ticket |
+| Content changed | Presented for review: accept incoming, keep current, or manually merge summary/description. Accepted changes reopen the ticket (or add `ib1-spec-changed`) |
+| Only version or date changed | Presented for review; acceptance refreshes the hidden property without changing status |
 | Same content | Nothing written |
-| Step/block removed from the IB1 | **Held.** With `--allow-removals`: moved to `Not Relevant` (or labeled `ib1-removed`) with a comment |
+| Step/block removed from the IB1 | Presented for review: accept to move to `Not Relevant` (or label `ib1-removed`), or keep the current ticket |
 | Hand-made ticket with the same name | **Held** as a possible duplicate. With `--adopt`: linked to the IB1 key and left as is (status and summary untouched) |
 | Ticket created from a different IB1 for the same ECU | Left untouched |
 | ECU ticket created by this tool (`--create-ecu`) | Description refreshed on each new version of the same IB1 document. Hand-made ECU tickets are never edited |
 | File older than the version already synced | Blocked, so an old file can never overwrite newer data |
 
-The whole file is **blocked** (nothing is written) when: the ECU ticket is missing (unless `--create-ecu`) or ambiguous; the file is older than the version already synced; the plan has review warnings (missing/duplicate ids, no ECU-ID); hand-made tickets look like IB1 blocks/steps but do not match (try the other `--granularity` with `--adopt`, or `--ignore-unmanaged`); or more than `--max-updates` (default 25) tickets would be reopened.
+The whole file is **blocked** (nothing is written) when: the ECU ticket is missing (unless `--create-ecu`) or ambiguous; the file is older than the version already synced; the plan has review warnings (missing/duplicate ids, no ECU-ID); hand-made tickets look like IB1 blocks/steps but do not match (try another `--granularity` with `--adopt`, or `--ignore-unmanaged`); a managed issue has the wrong Jira issue type or parent for the requested nesting; or more than `--max-updates` (default 25) tickets would be reopened. Existing flat tickets are not silently moved or converted; resolve migration blockers in Jira before syncing nested mode.
 
-After applying, a summary comment is added to the ECU ticket. Status names can be changed with `JIRA_REOPEN_STATUS` and `JIRA_REMOVED_STATUS`.
+All proposed changes require an individual review choice and check-off. Merged descriptions are saved as user-reviewed content; the next source comparison will surface the difference again. The approval file is bound to the exact Jira/source snapshot and all files in a batch are validated before any write. After applying, a summary comment is added to the ECU ticket. Status names can be changed with `JIRA_REOPEN_STATUS` and `JIRA_REMOVED_STATUS`.
+
+```bash
+npm run jira:sync -- path/to/IB1.xml --parent PRDFSI-150 --report review.json
+# Open http://localhost:5173/#/review and export approvals after checking off every change.
+npm run jira:sync -- path/to/IB1.xml --parent PRDFSI-150 --apply --approval-file ib1-jira-approvals.json
+```
+
+Git branch baselines and conflict checks are not yet integrated; this review compares incoming IB1 content with Jira.
 
 ## CSV import
 

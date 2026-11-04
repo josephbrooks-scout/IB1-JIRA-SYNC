@@ -3,6 +3,7 @@
 import type { DescriptionSection, JiraTicketPlan, PlannedTicket } from './ib1JiraPlan.ts'
 import { ticketWikiDescription, toJiraWikiMarkup } from './exporters.ts'
 import type { JiraApi, JiraIssueRef } from './jiraClient.ts'
+import { reviewActionId } from './review.ts'
 
 export const SYNC_PROPERTY = 'ib1.sync'
 export const SPEC_CHANGED_LABEL = 'ib1-spec-changed'
@@ -48,15 +49,18 @@ export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
 
 export type ExistingChild = {
   key: string
+  parentKey: string
   summary: string
+  description: unknown
   status: string
+  issueType: string
   labels: string[]
   property: SyncProperty | null
 }
 
 export type JiraState = {
   ecuKey: string | null
-  ecuCandidates: Array<{ key: string; summary: string; property: SyncProperty | null }>
+  ecuCandidates: Array<{ key: string; summary: string; description: unknown; property: SyncProperty | null }>
   ecuError: string
   children: ExistingChild[]
 }
@@ -68,6 +72,7 @@ export type SyncAction = {
   summary: string
   issueKey?: string
   ticket?: PlannedTicket
+  current?: { summary: string; description: unknown; status: string }
   hash?: string
   status?: string
   property?: SyncProperty
@@ -100,6 +105,13 @@ export type SyncResult = {
   errors: number
 }
 
+export type ApplyDecision = {
+  choice: 'accept' | 'keep' | 'merge'
+  checked: boolean
+  summary?: string
+  description?: string
+}
+
 const CHANGE_TYPES: SyncActionType[] = ['create-ecu', 'create', 'update', 'adopt', 'remove']
 // Listed in reports, but not counted as a change worth an ECU summary comment.
 const LISTED_TYPES: SyncActionType[] = [...CHANGE_TYPES, 'update-ecu']
@@ -125,9 +137,23 @@ export async function readJiraState(api: JiraApi, plan: JiraTicketPlan, options:
 
   if (state.ecuCandidates.length === 1) {
     state.ecuKey = state.ecuCandidates[0].key
-    state.children = (await api.searchIssues(`parent = ${state.ecuKey} ORDER BY key ASC`, [SYNC_PROPERTY])).map(
-      toExistingChild,
-    )
+    const directChildren = await api.searchIssues(`parent = ${state.ecuKey} ORDER BY key ASC`, [SYNC_PROPERTY])
+    state.children = directChildren.map((child) => toExistingChild(child, state.ecuKey!))
+
+    if (plan.options.granularity === 'nested') {
+      const nestedChildren = await Promise.all(
+        directChildren.map(async (parent) => ({
+          parentKey: parent.key,
+          issues: await api.searchIssues(`parent = ${parent.key} ORDER BY key ASC`, [SYNC_PROPERTY]),
+        })),
+      )
+
+      state.children.push(
+        ...nestedChildren.flatMap(({ parentKey, issues }) =>
+          issues.map((issue) => toExistingChild(issue, parentKey)),
+        ),
+      )
+    }
   } else if (!state.ecuError && !state.ecuCandidates.length && options.createEcu && options.vehicleKey) {
     // Catch a mistyped --vehicle before anything is written; Jira would otherwise reject the ECU and every child.
     try {
@@ -142,7 +168,9 @@ export async function readJiraState(api: JiraApi, plan: JiraTicketPlan, options:
   return state
 }
 
-export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOptions): SyncPlan {
+export function planSync(inputPlan: JiraTicketPlan, state: JiraState, options: SyncOptions): SyncPlan {
+  const ecuName = state.ecuCandidates.length === 1 ? state.ecuCandidates[0].summary.trim() : ''
+  const plan = ecuName ? planWithEcuName(inputPlan, ecuName) : inputPlan
   const blockers = [...plan.reviewReasons]
   const notes: string[] = []
   const actions: SyncAction[] = []
@@ -176,6 +204,11 @@ export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOp
         type: 'update-ecu',
         summary: plan.ecu.summary,
         issueKey: state.ecuKey,
+        current: {
+          summary: state.ecuCandidates[0].summary,
+          description: state.ecuCandidates[0].description,
+          status: '',
+        },
         hash: ecuHash,
         property: ecuProperty,
         reason: `ECU description refreshed from v${ecuProperty.ibVersion}`,
@@ -212,6 +245,7 @@ export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOp
   }
 
   const claimed = new Set<string>()
+  const managedByKey = new Map(Array.from(managed.values(), (child) => [child.property!.key, child]))
 
   plan.tickets.forEach((ticket) => {
     const hash = ticketContentHash(ticket)
@@ -220,21 +254,54 @@ export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOp
     if (existing) {
       const property = existing.property!
 
+      const expectedParent = ticket.parentIbKey
+        ? managedByKey.get(ticket.parentIbKey)?.key
+        : state.ecuKey
+
+      if (existing.issueType && existing.issueType !== ticket.issueType) {
+        blockers.push(
+          `${existing.key} "${existing.summary}" is currently ${existing.issueType}, but this plan requires ${ticket.issueType}. Move/migrate it in Jira before syncing this granularity.`,
+        )
+      } else if (ticket.parentIbKey && !expectedParent) {
+        blockers.push(
+          `${existing.key} "${existing.summary}" is a step ticket, but its planned block has no matching Jira ticket. Resolve the block before syncing this granularity.`,
+        )
+      } else if (expectedParent && existing.parentKey !== expectedParent) {
+        blockers.push(
+          `${existing.key} "${existing.summary}" is under ${existing.parentKey}, but this plan requires it under ${expectedParent}. Move/migrate it in Jira before syncing this granularity.`,
+        )
+      }
+
       if (property.removedIn || property.hash !== hash) {
         actions.push({
           type: 'update',
           summary: ticket.summary,
           issueKey: existing.key,
           ticket,
+          current: { summary: existing.summary, description: existing.description, status: existing.status },
           hash,
           status: existing.status,
           property,
           reason: property.removedIn ? `back in the IB1 after removal in v${property.removedIn}` : 'IB1 content changed',
         })
       } else if (property.ibVersion !== source.version) {
-        actions.push({ type: 'refresh', summary: ticket.summary, issueKey: existing.key, ticket, hash })
+        actions.push({
+          type: 'refresh',
+          summary: ticket.summary,
+          issueKey: existing.key,
+          ticket,
+          current: { summary: existing.summary, description: existing.description, status: existing.status },
+          hash,
+        })
       } else {
-        actions.push({ type: 'unchanged', summary: ticket.summary, issueKey: existing.key, ticket, hash })
+        actions.push({
+          type: 'unchanged',
+          summary: ticket.summary,
+          issueKey: existing.key,
+          ticket,
+          current: { summary: existing.summary, description: existing.description, status: existing.status },
+          hash,
+        })
       }
 
       return
@@ -246,11 +313,20 @@ export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOp
       claimed.add(match.key)
       actions.push(
         options.adopt
-          ? { type: 'adopt', summary: ticket.summary, issueKey: match.key, ticket, hash, reason: `existing "${match.summary}"` }
+          ? {
+              type: 'adopt',
+              summary: ticket.summary,
+              issueKey: match.key,
+              ticket,
+              current: { summary: match.summary, description: match.description, status: match.status },
+              hash,
+              reason: `existing "${match.summary}"`,
+            }
           : {
               type: 'create',
               summary: ticket.summary,
               ticket,
+              current: { summary: match.summary, description: match.description, status: match.status },
               hash,
               held: `possible duplicate of ${match.key} "${match.summary}" — rerun with --adopt to link it instead`,
             },
@@ -268,6 +344,7 @@ export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOp
         type: 'remove',
         summary: child.summary,
         issueKey: child.key,
+        current: { summary: child.summary, description: child.description, status: child.status },
         status: child.status,
         property: child.property!,
         reason: `no longer in ${source.ibName} v${source.version}`,
@@ -302,21 +379,83 @@ export function planSync(plan: JiraTicketPlan, state: JiraState, options: SyncOp
   return { plan, ecuKey: state.ecuKey, blockers, notes, actions }
 }
 
+function planWithEcuName(plan: JiraTicketPlan, ecuName: string): JiraTicketPlan {
+  return {
+    ...plan,
+    tickets: plan.tickets.map((ticket) => ({
+      ...ticket,
+      sections: ticket.sections.map((section) => {
+        if (section.kind !== 'fields' || section.title !== 'IB1 source') {
+          return section
+        }
+
+        const hasEcuName = section.rows.some(([key]) => key === 'ECU name')
+        const rows = section.rows.map(
+          ([key, value]): [string, string] => [key, key === 'ECU name' ? ecuName : value],
+        )
+
+        if (!hasEcuName) {
+          rows.push(['ECU name', ecuName])
+        }
+
+        return { ...section, rows }
+      }),
+    })),
+  }
+}
+
 export async function applySync(
   api: JiraApi,
   syncPlan: SyncPlan,
   options: SyncOptions,
   now: () => Date = () => new Date(),
+  decisions?: Record<string, ApplyDecision>,
 ): Promise<SyncResult> {
-  const held = syncPlan.actions.filter((action) => action.held).length
+  const held = syncPlan.actions.filter((action, index) => {
+    const decision = decisions?.[reviewActionId(action, index)]
+    return action.held && !(action.type === 'remove' && decision?.choice === 'accept' && decision.checked)
+  }).length
 
   if (syncPlan.blockers.length) {
+    return { status: 'blocked', ecuKey: syncPlan.ecuKey, outcomes: [], held, errors: 0 }
+  }
+
+  const actionByTicketKey = new Map(
+    syncPlan.actions.filter((action) => action.ticket).map((action) => [action.ticket!.ibKey, action]),
+  )
+  const dependencyBlockers = syncPlan.actions.flatMap((action, index) => {
+    const ticket = action.ticket
+
+    if (!ticket?.parentIbKey) return []
+
+    const parentAction = actionByTicketKey.get(ticket.parentIbKey)
+    if (!parentAction) return [`${action.summary} cannot be attached because its planned block is missing.`]
+    if (parentAction.issueKey) return []
+
+    const parentDecision = decisions?.[reviewActionId(parentAction, syncPlan.actions.indexOf(parentAction))]
+    const parentWillBeCreated =
+      parentAction.type === 'create' &&
+      parentDecision?.choice !== 'keep' &&
+      !parentAction.held
+
+    if (!parentWillBeCreated && decisions?.[reviewActionId(action, index)]?.choice !== 'keep') {
+      return [`${action.summary} cannot be applied because its block "${parentAction.summary}" will not exist in Jira.`]
+    }
+
+    return []
+  })
+
+  if (dependencyBlockers.length) {
+    syncPlan.blockers.push(...dependencyBlockers)
     return { status: 'blocked', ecuKey: syncPlan.ecuKey, outcomes: [], held, errors: 0 }
   }
 
   const { plan } = syncPlan
   const outcomes: SyncOutcome[] = []
   let ecuKey = syncPlan.ecuKey
+  const issueKeysByTicket = new Map(
+    syncPlan.actions.flatMap((action) => action.ticket && action.issueKey ? [[action.ticket.ibKey, action.issueKey] as const] : []),
+  )
   const propertyFor = (ticket: PlannedTicket, hash: string): SyncProperty => ({
     key: ticket.ibKey,
     hash,
@@ -327,8 +466,14 @@ export async function applySync(
   })
   const versionLabel = `${plan.source.ibName} v${plan.source.version}`
 
-  for (const action of syncPlan.actions) {
-    if (action.held || action.type === 'unchanged') {
+  for (const [index, action] of syncPlan.actions.entries()) {
+    const decision = decisions?.[reviewActionId(action, index)]
+
+    if (
+      action.type === 'unchanged' ||
+      decision?.choice === 'keep' ||
+      (action.held && !(action.type === 'remove' && decision?.choice === 'accept' && decision.checked))
+    ) {
       continue
     }
 
@@ -336,13 +481,21 @@ export async function applySync(
 
     try {
       if (action.type === 'create-ecu') {
-        ecuKey = await createEcuTicket(api, plan, options, now)
+        ecuKey = await createEcuTicket(api, plan, options, now, decision)
         outcome.issueKey = ecuKey
       } else if (action.type === 'update-ecu') {
-        await api.editIssue(action.issueKey!, { description: ecuWikiDescription(plan) })
+        const summary = decision?.choice === 'merge' ? decision.summary! : plan.ecu.summary
+        const description =
+          decision?.choice === 'merge' ? decision.description! : ecuWikiDescription(plan)
+        const hash =
+          decision?.choice === 'merge'
+            ? mergedContentHash(summary, description)
+            : action.hash!
+
+        await api.editIssue(action.issueKey!, { summary, description })
         await api.setProperty(action.issueKey!, SYNC_PROPERTY, {
           ...action.property!,
-          hash: action.hash!,
+          hash,
           ibVersion: plan.source.version,
           syncedAt: now().toISOString(),
         })
@@ -350,24 +503,44 @@ export async function applySync(
         throw new Error('No ECU ticket available to attach to.')
       } else if (action.type === 'create') {
         const ticket = action.ticket!
+        const summary = decision?.choice === 'merge' ? decision.summary! : ticket.summary
+        const description =
+          decision?.choice === 'merge' ? decision.description! : ticketWikiDescription(ticket)
+        const hash =
+          decision?.choice === 'merge'
+            ? mergedContentHash(summary, description)
+            : action.hash!
+        const parentKey = ticket.parentIbKey ? issueKeysByTicket.get(ticket.parentIbKey) : ecuKey
+
+        if (!parentKey) {
+          throw new Error(`Could not resolve the Jira parent for "${ticket.summary}".`)
+        }
 
         outcome.issueKey = await api.createIssue(
           {
             project: { key: plan.options.projectKey },
             issuetype: { name: ticket.issueType },
-            parent: { key: ecuKey },
-            summary: ticket.summary,
-            description: ticketWikiDescription(ticket),
+            parent: { key: parentKey },
+            summary,
+            description,
             labels: ticket.labels,
           },
-          [{ key: SYNC_PROPERTY, value: propertyFor(ticket, action.hash!) }],
+          [{ key: SYNC_PROPERTY, value: propertyFor(ticket, hash) }],
         )
+        issueKeysByTicket.set(ticket.ibKey, outcome.issueKey)
       } else if (action.type === 'update') {
         const ticket = action.ticket!
         const key = action.issueKey!
+        const summary = decision?.choice === 'merge' ? decision.summary! : ticket.summary
+        const description =
+          decision?.choice === 'merge' ? decision.description! : ticketWikiDescription(ticket)
+        const hash =
+          decision?.choice === 'merge'
+            ? mergedContentHash(summary, description)
+            : action.hash!
 
-        await api.editIssue(key, { summary: ticket.summary, description: ticketWikiDescription(ticket) }, ticket.labels)
-        await api.setProperty(key, SYNC_PROPERTY, propertyFor(ticket, action.hash!))
+        await api.editIssue(key, { summary, description }, ticket.labels)
+        await api.setProperty(key, SYNC_PROPERTY, propertyFor(ticket, hash))
         outcome.detail = await moveToStatus(api, key, action.status ?? '', options.reopenStatus, SPEC_CHANGED_LABEL)
         await api.addComment(
           key,
@@ -423,12 +596,25 @@ function ecuWikiDescription(plan: JiraTicketPlan) {
   return toJiraWikiMarkup(plan.ecu.sections, `ib1:${plan.ecu.ecuId}:ecu`)
 }
 
-async function createEcuTicket(api: JiraApi, plan: JiraTicketPlan, options: SyncOptions, now: () => Date) {
+async function createEcuTicket(
+  api: JiraApi,
+  plan: JiraTicketPlan,
+  options: SyncOptions,
+  now: () => Date,
+  decision?: ApplyDecision,
+) {
+  const summary = decision?.choice === 'merge' ? decision.summary! : plan.ecu.summary
+  const description =
+    decision?.choice === 'merge' ? decision.description! : ecuWikiDescription(plan)
+  const hash =
+    decision?.choice === 'merge'
+      ? mergedContentHash(summary, description)
+      : ecuContentHash(plan)
   const fields: Record<string, unknown> = {
     project: { key: plan.options.projectKey },
     issuetype: { name: plan.ecu.issueType },
-    summary: plan.ecu.summary,
-    description: ecuWikiDescription(plan),
+    summary,
+    description,
     labels: ['ib1', `ecu-${plan.ecu.ecuId}`, ...plan.options.extraLabels],
   }
 
@@ -456,7 +642,7 @@ async function createEcuTicket(api: JiraApi, plan: JiraTicketPlan, options: Sync
       key: SYNC_PROPERTY,
       value: {
         key: `ib1:${plan.ecu.ecuId}:ecu`,
-        hash: ecuContentHash(plan),
+        hash,
         ibName: plan.source.ibName,
         ibVersion: plan.source.version,
         ecuId: plan.ecu.ecuId,
@@ -592,19 +778,27 @@ function toCandidate(issue: JiraIssueRef) {
   return {
     key: issue.key,
     summary: issue.fields.summary ?? '',
+    description: issue.fields.description,
     property: parseSyncProperty(issue.properties?.[SYNC_PROPERTY]),
   }
 }
 
 export function ecuContentHash(plan: JiraTicketPlan): string {
-  return cyrb53(JSON.stringify(plan.ecu.sections))
+  return cyrb53(JSON.stringify({ summary: plan.ecu.summary, sections: plan.ecu.sections }))
 }
 
-function toExistingChild(issue: JiraIssueRef): ExistingChild {
+function mergedContentHash(summary: string, description: string) {
+  return cyrb53(JSON.stringify({ summary, description }))
+}
+
+function toExistingChild(issue: JiraIssueRef, parentKey: string): ExistingChild {
   return {
     key: issue.key,
+    parentKey,
     summary: issue.fields.summary ?? '',
+    description: issue.fields.description,
     status: issue.fields.status?.name ?? '',
+    issueType: issue.fields.issuetype?.name ?? '',
     labels: issue.fields.labels ?? [],
     property: parseSyncProperty(issue.properties?.[SYNC_PROPERTY]),
   }

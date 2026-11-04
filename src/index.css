@@ -1,23 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-
 :root {
-  --ink: #17211b;
-  --muted: #64726c;
-  --paper: #f4f0e4;
-  --surface: #fffdfa;
-  --line: #d9d1bd;
-  --line-strong: #a99f88;
-  --teal: #0f766e;
-  --teal-dark: #075f58;
-  --teal-soft: #dcefed;
-  --added: #16815f;
-  --removed: #b64343;
-  --changed: #b7791f;
-  --focus: rgba(35, 87, 137, 0.32);
-  --shadow-soft: 0 14px 34px rgba(23, 33, 27, 0.08);
-  --shadow-lifted: 0 20px 42px rgba(23, 33, 27, 0.13);
-  --sans: 'IBM Plex Sans', 'Aptos', 'Segoe UI', sans-serif;
-  --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --harvest-orange: #ff5432;
+  --chalk: #faf9f5;
+  --moonstone: #131f26;
+  --ink: var(--moonstone);
+  --muted: #59646a;
+  --paper: var(--chalk);
+  --surface: #fff;
+  --line: #d9dddc;
+  --line-strong: #879195;
+  --accent: var(--harvest-orange);
+  --accent-dark: #ad2f17;
+  --accent-soft: #ffede8;
+  --added: #226246;
+  --removed: #aa303b;
+  --changed: #8a570f;
+  --focus: var(--accent-dark);
+  --shadow-soft: 0 2px 6px rgba(19, 31, 38, 0.04);
+  --shadow-lifted: 0 6px 18px rgba(19, 31, 38, 0.08);
+  --sans: 'Arial', 'Helvetica Neue', sans-serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 
   color: var(--ink);
   background: var(--paper);
@@ -32,12 +33,14 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   min-width: 320px;
-  background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 34rem),
-    linear-gradient(135deg, rgba(183, 121, 31, 0.14), transparent 28rem),
-    var(--paper);
+  background: var(--paper);
+  scroll-behavior: smooth;
 }
 
 body {
@@ -48,8 +51,23 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+}
+
+a {
+  color: var(--accent-dark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--moonstone);
 }
 
 h1,
@@ -67,11 +85,23 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(38px, 6vw, 72px);
-  line-height: 0.94;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.1;
 }
 
 h2 {
-  font-size: clamp(22px, 3vw, 34px);
-  line-height: 1.08;
+  font-size: clamp(20px, 2.5vw, 28px);
+  line-height: 1.2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
 }

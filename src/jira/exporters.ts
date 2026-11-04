@@ -90,6 +90,7 @@ function csvCell(value: string): string {
 // "Parent" links rows to an issue that already exists (e.g. PRDFSI-150). Repeated "Labels" columns hold one label each.
 export function toJiraCsv(plan: JiraTicketPlan): string {
   const existingParent = plan.ecu.existingIssueKey
+  const ticketIds = new Map(plan.tickets.map((ticket, index) => [ticket.ibKey, String(index + 2)]))
   const maxLabels = Math.max(1, ...plan.tickets.map((ticket) => ticket.labels.length))
   const ecuLabels = ['ib1', `ecu-${plan.ecu.ecuId}`, ...plan.options.extraLabels]
   const header = [
@@ -121,10 +122,16 @@ export function toJiraCsv(plan: JiraTicketPlan): string {
   }
 
   plan.tickets.forEach((ticket, index) => {
+    const parentId = ticket.parentIbKey
+      ? ticketIds.get(ticket.parentIbKey) ?? ''
+      : existingParent
+        ? ''
+        : '1'
+
     rows.push([
-      String(index + 2),
-      existingParent ? '' : '1',
-      existingParent,
+      ticketIds.get(ticket.ibKey) ?? String(index + 2),
+      parentId,
+      ticket.parentIbKey ? '' : existingParent,
       ticket.summary,
       ticket.issueType,
       ticketWikiDescription(ticket),
@@ -153,7 +160,9 @@ export function toPlanJson(plan: JiraTicketPlan): string {
       ecu: { ...plan.ecu, descriptionWiki: toJiraWikiMarkup(plan.ecu.sections) },
       tickets: plan.tickets.map((ticket) => ({
         ...ticket,
-        parent: plan.ecu.existingIssueKey || `(new ${plan.ecu.issueType}: ${plan.ecu.summary})`,
+        parent: ticket.parentIbKey
+          ? plan.tickets.find((parent) => parent.ibKey === ticket.parentIbKey)?.summary ?? ''
+          : plan.ecu.existingIssueKey || `(new ${plan.ecu.issueType}: ${plan.ecu.summary})`,
         descriptionWiki: ticketWikiDescription(ticket),
       })),
     },

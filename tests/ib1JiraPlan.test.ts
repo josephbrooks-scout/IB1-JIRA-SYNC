@@ -85,18 +85,23 @@ describe('buildJiraTicketPlan', () => {
     expect(result.tickets[3].fields.Action).toBe('HMI: Press the window button')
   })
 
-  it('creates one ticket per block by default', () => {
+  it('creates one block ticket and nested step tickets by default', () => {
     const result = buildJiraTicketPlan(parse(fixture), 'ib1-jira-sample.xml')
 
-    expect(result.options.granularity).toBe('block')
-    expect(result.tickets.map((ticket) => ticket.summary)).toEqual([
+    expect(result.options.granularity).toBe('nested')
+    const blocks = result.tickets.filter((ticket) => ticket.kind === 'block')
+    const steps = result.tickets.filter((ticket) => ticket.kind !== 'block')
+
+    expect(blocks.map((ticket) => ticket.summary)).toEqual([
       'SFD unlock',
       'ECU Reset',
       'button_worker_check',
       'coding (LHD)',
     ])
-    expect(result.tickets[2].fields.Steps).toBe('3')
-    expect(result.tickets.every((ticket) => ticket.kind === 'block')).toBe(true)
+    expect(blocks[2].fields.Steps).toBe('3')
+    expect(steps).toHaveLength(6)
+    expect(steps.every((ticket) => ticket.issueType === 'Workaround')).toBe(true)
+    expect(steps.every((ticket) => ticket.parentIbKey === ticket.blockKey)).toBe(true)
   })
 
   it('puts every step with its full detail into the block ticket description', () => {
@@ -105,6 +110,7 @@ describe('buildJiraTicketPlan', () => {
     const button = tickets.find((ticket) => ticket.summary === 'button_worker_check')!
     const wiki = ticketWikiDescription(button)
 
+    expect(wiki).toContain('*ECU name:* 0099_Test_ECU')
     expect(reset.sections.filter((section) => section.kind === 'heading').map((section) => section.title)).toEqual([
       'Step 1: ECU Reset [1101]',
       'Step 2: Wartezeit',
@@ -134,6 +140,38 @@ describe('buildJiraTicketPlan', () => {
   it('rejects documents without an IB-1 root', () => {
     expect(() => buildJiraTicketPlan(parse('<html><body/></html>'), 'x.html')).toThrow(/IB-1 root/)
   })
+
+  it('walks nested procedure groups and includes the group path in block details', () => {
+    const result = buildJiraTicketPlan(
+      parse(`
+        <IB-1>
+          <NAME>0001_Engine</NAME>
+          <PROCEDURES>
+            <PROCEDURE id="procedure">
+              <NAME>Engine tests</NAME>
+              <GROUP id="group">
+                <NAME>Commissioning</NAME>
+                <BLOCKS>
+                  <BLOCK id="block"><NAME>Warm up</NAME></BLOCK>
+                  <GROUP id="nested-group">
+                    <NAME>Nested checks</NAME>
+                    <BLOCKS><BLOCK id="nested-block"><NAME>Pressure test</NAME></BLOCK></BLOCKS>
+                  </GROUP>
+                </BLOCKS>
+              </GROUP>
+            </PROCEDURE>
+          </PROCEDURES>
+        </IB-1>
+      `),
+      'nested-groups.xml',
+    )
+
+    expect(result.stats).toMatchObject({ procedures: 1, blocks: 2, tickets: 2 })
+    expect(result.tickets.map((ticket) => ticket.summary)).toEqual(['Warm up', 'Pressure test'])
+    expect(result.tickets[0].fields.Group).toBe('Commissioning')
+    expect(result.tickets[1].fields.Group).toBe('Commissioning > Nested checks')
+    expect(result.tickets[1].path).toContain('Nested checks')
+  })
 })
 
 describe('exporters', () => {
@@ -159,6 +197,14 @@ describe('exporters', () => {
     expect(lines[0]).toMatch(/^"Issue Id","Parent Id","Parent","Summary","Issue Type","Description","IB1 Key","Labels"/)
     expect(lines[1]).toMatch(/^"1","","","0099_Test_ECU","Electronic Control Unit"/)
     expect(csv).toContain('"2","1","","SFD unlock","Commissioning Step"')
+  })
+
+  it('nests step subtasks under their block rows in Jira CSV', () => {
+    const nestedPlan = buildJiraTicketPlan(parse(fixture), 'ib1-jira-sample.xml')
+    const csv = toJiraCsv(nestedPlan)
+
+    expect(csv).toContain('"3","1","","ECU Reset","Commissioning Step"')
+    expect(csv).toContain('"4","3","","[ECU Reset] ECU Reset [1101]","Workaround"')
   })
 
   it('links CSV rows to an existing ECU ticket when given', () => {

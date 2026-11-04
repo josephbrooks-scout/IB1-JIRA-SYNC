@@ -5,6 +5,7 @@ export type JiraIssueRef = {
   key: string
   fields: {
     summary?: string
+    description?: unknown
     status?: { name: string }
     labels?: string[]
     issuetype?: { name: string }
@@ -46,7 +47,7 @@ export type JiraConnection = {
   apiToken: string
 }
 
-const ISSUE_FIELDS = ['summary', 'status', 'labels', 'issuetype']
+const ISSUE_FIELDS = ['summary', 'description', 'status', 'labels', 'issuetype']
 const MAX_ATTEMPTS = 4
 
 export class JiraRequestError extends Error {

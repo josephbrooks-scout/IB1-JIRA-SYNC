@@ -18,9 +18,11 @@ import {
   readJiraState,
   SPEC_CHANGED_LABEL,
   SYNC_PROPERTY,
+  type ApplyDecision,
   type SyncOptions,
   type SyncProperty,
 } from '../src/jira/jiraSync.ts'
+import { buildReviewFile, reviewActionId, validateReviewApproval } from '../src/jira/review.ts'
 
 const fixture = readFileSync(new URL('./fixtures/ib1-jira-sample.xml', import.meta.url), 'utf8')
 
@@ -69,7 +71,13 @@ class FakeJira implements JiraApi {
   private ref(issue: FakeIssue, properties: string[]): JiraIssueRef {
     return {
       key: issue.key,
-      fields: { summary: issue.summary, status: { name: issue.status }, labels: issue.labels },
+      fields: {
+        summary: issue.summary,
+        description: issue.description,
+        status: { name: issue.status },
+        labels: issue.labels,
+        issuetype: { name: issue.issueType },
+      },
       properties: Object.fromEntries(properties.filter((name) => name in issue.properties).map((name) => [name, issue.properties[name]])),
     }
   }
@@ -223,6 +231,43 @@ describe('IB1 → Jira sync', () => {
     expect(ecu.comments.at(-1)).toContain('7 created')
   })
 
+  it('creates block tickets under the ECU and step subtasks under their block', async () => {
+    jira.add({ key: 'PRDFSI-150', summary: 'ECU', issueType: 'Electronic Control Unit', fields: { 'Diag Address': '0099' } })
+
+    const { syncPlan, result } = await sync(jira, fixture, {}, { granularity: 'nested' })
+    const blocks = jira.children('PRDFSI-150')
+    const resetBlock = blocks.find((issue) => issue.summary === 'ECU Reset')!
+    const resetSteps = jira.children(resetBlock.key)
+
+    expect(syncPlan.blockers).toEqual([])
+    expect(result.status).toBe('applied')
+    expect(blocks.filter((issue) => issue.labels.includes('ib1-block'))).toHaveLength(4)
+    expect(blocks.filter((issue) => issue.labels.includes('ib1-step'))).toHaveLength(0)
+    expect(resetSteps.map((issue) => issue.summary)).toEqual([
+      '[ECU Reset] ECU Reset [1101]',
+      '[ECU Reset] Wartezeit',
+    ])
+    expect(resetSteps.every((issue) => issue.issueType === 'Workaround')).toBe(true)
+    expect(resetSteps.every((issue) => issue.labels.includes('ib1-step'))).toBe(true)
+
+    const managedStep = resetSteps[0]
+    const writesBeforeMismatch = jira.writes
+    managedStep.issueType = 'Commissioning Step'
+
+    const wrongType = await sync(jira, fixture, {}, { granularity: 'nested' })
+
+    expect(wrongType.syncPlan.blockers.join()).toMatch(/requires Workaround/)
+    expect(jira.writes).toBe(writesBeforeMismatch)
+
+    managedStep.issueType = 'Workaround'
+    managedStep.parent = 'PRDFSI-150'
+
+    const wrongParent = await sync(jira, fixture, {}, { granularity: 'nested' })
+
+    expect(wrongParent.syncPlan.blockers.join()).toMatch(/requires it under/)
+    expect(jira.writes).toBe(writesBeforeMismatch)
+  })
+
   it('blocks a mistyped --vehicle before writing anything', async () => {
     const { syncPlan, result } = await sync(jira, fixture, { createEcu: true, vehicleKey: 'TEST-KEY' })
 
@@ -251,8 +296,17 @@ describe('IB1 → Jira sync', () => {
   })
 
   it('finds the existing ECU by Diag Address and is idempotent on re-run', async () => {
-    jira.add({ key: 'PRDFSI-150', summary: 'ECU', issueType: 'Electronic Control Unit', fields: { 'Diag Address': '0099' } })
+    jira.add({
+      key: 'PRDFSI-150',
+      summary: '0099 ECU Canonical Name',
+      issueType: 'Electronic Control Unit',
+      fields: { 'Diag Address': '0099' },
+    })
     await sync(jira)
+
+    expect(jira.children('PRDFSI-150').every((issue) => issue.description.includes('*ECU name:* 0099 ECU Canonical Name'))).toBe(
+      true,
+    )
 
     const writesAfterFirstRun = jira.writes
     const { syncPlan, result } = await sync(jira)
@@ -260,6 +314,81 @@ describe('IB1 → Jira sync', () => {
     expect(typesOf(syncPlan.actions)).toEqual({ unchanged: 7 })
     expect(result.outcomes).toEqual([])
     expect(jira.writes).toBe(writesAfterFirstRun)
+  })
+
+  it('exports before-and-after review content and requires a check-off for every change', async () => {
+    jira.add({
+      key: 'PRDFSI-150',
+      summary: '0099 ECU',
+      issueType: 'Electronic Control Unit',
+      fields: { 'Diag Address': '0099' },
+    })
+    const options = { ...DEFAULT_SYNC_OPTIONS }
+    const plan = makePlan(fixture, { granularity: 'block' })
+    const syncPlan = planSync(plan, await readJiraState(jira, plan, options), options)
+    const review = buildReviewFile(syncPlan, 'sample.xml', 'review-1')
+
+    expect(review.actions).toHaveLength(4)
+    expect(review.actions[0].proposed?.description).toContain('Block description')
+    expect(validateReviewApproval(review, { reviewId: 'review-1', actions: {} }).errors).toHaveLength(4)
+    expect(review.actions[0].id).toBe(reviewActionId(syncPlan.actions[0], 0))
+  })
+
+  it('requires an accepted new block before approving its new step subtasks', async () => {
+    jira.add({
+      key: 'PRDFSI-150',
+      summary: '0099 ECU',
+      issueType: 'Electronic Control Unit',
+      fields: { 'Diag Address': '0099' },
+    })
+    const options = { ...DEFAULT_SYNC_OPTIONS }
+    const plan = makePlan(fixture, { granularity: 'nested' })
+    const syncPlan = planSync(plan, await readJiraState(jira, plan, options), options)
+    const review = buildReviewFile(syncPlan, 'sample.xml', 'review-nested')
+    const actions: Record<string, { choice: 'accept' | 'keep' | 'merge'; checked: boolean }> = Object.fromEntries(
+      review.actions.map((action) => [action.id, { choice: 'accept' as const, checked: true }]),
+    )
+    const firstStep = review.actions.find((action) => action.parentIbKey)!
+    const firstBlock = review.actions.find((action) => action.ibKey === firstStep.parentIbKey)!
+    actions[firstBlock.id] = { choice: 'keep', checked: true }
+
+    expect(validateReviewApproval(review, { reviewId: 'review-nested', actions }).errors.join()).toMatch(/cannot be applied unless its block/)
+
+    actions[firstBlock.id] = { choice: 'accept', checked: true }
+    expect(validateReviewApproval(review, { reviewId: 'review-nested', actions }).errors).toEqual([])
+  })
+
+  it('applies only checked actions and uses the manually merged content', async () => {
+    jira.add({
+      key: 'PRDFSI-150',
+      summary: 'ECU',
+      issueType: 'Electronic Control Unit',
+      fields: { 'Diag Address': '0099' },
+    })
+    const options = { ...DEFAULT_SYNC_OPTIONS }
+    const plan = makePlan(fixture, { granularity: 'block' })
+    const syncPlan = planSync(plan, await readJiraState(jira, plan, options), options)
+    const firstAction = syncPlan.actions[0]
+    const decisions: Record<string, ApplyDecision> = Object.fromEntries(
+      syncPlan.actions.map((action, index) => [
+        reviewActionId(action, index),
+        { choice: 'keep' as const, checked: true },
+      ]),
+    )
+    decisions[reviewActionId(firstAction, 0)] = {
+      choice: 'merge',
+      checked: true,
+      summary: 'Reviewed title',
+      description: 'Merged Jira description',
+    }
+
+    const result = await applySync(jira, syncPlan, options, () => new Date('2026-10-30T12:00:00Z'), decisions)
+    const children = jira.children('PRDFSI-150')
+
+    expect(result.status).toBe('applied')
+    expect(children).toHaveLength(1)
+    expect(children[0]).toMatchObject({ summary: 'Reviewed title', description: 'Merged Jira description' })
+    expect((children[0].properties[SYNC_PROPERTY] as SyncProperty).hash).not.toBe(firstAction.hash)
   })
 
   it('updates and reopens only changed tickets on a new version; others get a quiet version refresh', async () => {

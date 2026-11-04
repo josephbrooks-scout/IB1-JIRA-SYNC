@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
 import {
   buildJiraTicketPlan,
@@ -10,6 +10,7 @@ import {
   type XmlNode,
 } from './ib1JiraPlan.ts'
 import { ticketWikiDescription, toJiraCsv, toJiraWikiMarkup, toPlanJson } from './exporters.ts'
+import { TicketWorkflow } from './TicketWorkflow.tsx'
 
 type LoadedXml = {
   fileName: string
@@ -63,6 +64,8 @@ function exportBaseName(plan: JiraTicketPlan) {
 }
 
 export function JiraPreview({ hidden }: { hidden?: boolean }) {
+  const setupRef = useRef<HTMLElement>(null)
+  const previewRef = useRef<HTMLElement>(null)
   const [loaded, setLoaded] = useState<LoadedXml | null>(null)
   const [loadError, setLoadError] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -132,7 +135,12 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
 
   return (
     <div className="jira-view" hidden={hidden}>
-      <section className="jira-setup" aria-label="IB1 file and Jira settings">
+      <TicketWorkflow
+        stage={plan ? 'preview' : 'load'}
+        onLoad={() => setupRef.current?.scrollIntoView({ block: 'start' })}
+        onPreview={() => previewRef.current?.scrollIntoView({ block: 'start' })}
+      />
+      <section ref={setupRef} className="jira-setup" aria-label="IB1 file and Jira settings">
         <label
           className={`file-slot ${dragging ? 'is-dragging' : ''}`}
           onDragEnter={(event) => {
@@ -147,12 +155,12 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
             void handleFile(event.dataTransfer.files)
           }}
         >
-          <span className="file-slot__label">IB1 XML</span>
-          <strong>{plan?.source.ibName || 'Select IB1 document'}</strong>
+          <span className="file-slot__label">{plan ? 'Document loaded' : 'Start here'}</span>
+          <strong>{plan?.source.ibName || 'Choose an IB1 document'}</strong>
           <span>
             {plan
               ? `${plan.source.fileName} | v${plan.source.version} | released ${plan.source.releaseDate}`
-              : 'XML only — HTML exports have no stable ids'}
+              : 'Drop an XML file here, or click to browse.'}
           </span>
           {loadError || planResult?.error ? (
             <span className="file-slot__error">{loadError || planResult?.error}</span>
@@ -167,65 +175,83 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
           />
         </label>
 
-        <form className="jira-options" onSubmit={(event) => event.preventDefault()}>
-          <label>
-            <span>Project key</span>
-            <input
-              value={options.projectKey}
-              onChange={(event) => updateOption('projectKey', event.target.value.trim().toUpperCase())}
-            />
-          </label>
-          <label>
-            <span>Existing ECU ticket</span>
-            <input
-              placeholder="e.g. PRDFSI-150 (blank = create new)"
-              value={options.ecuIssueKey}
-              onChange={(event) => updateOption('ecuIssueKey', event.target.value.trim().toUpperCase())}
-            />
-          </label>
-          <label>
-            <span>ECU issue type</span>
-            <input
-              value={options.ecuIssueType}
-              onChange={(event) => updateOption('ecuIssueType', event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Child issue type</span>
-            <input
-              value={options.childIssueType}
-              onChange={(event) => updateOption('childIssueType', event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Extra labels</span>
-            <input
-              placeholder="e.g. Mule VFF"
-              value={labelText}
-              onChange={(event) => handleLabels(event.target.value)}
-            />
-          </label>
-          <div className="jira-options__granularity">
-            <span>One ticket per</span>
-            <div className="status-segment jira-segment" role="group" aria-label="Ticket granularity">
-              {(['block', 'step'] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={options.granularity === value}
-                  onClick={() => updateOption('granularity', value)}
-                >
-                  {value === 'step' ? 'Step' : 'Block'}
-                </button>
-              ))}
-            </div>
+        <form className="jira-settings" onSubmit={(event) => event.preventDefault()}>
+          <div className="jira-destination">
+            <p className="eyebrow">Jira destination</p>
+            <label>
+              <span>Existing ECU ticket (optional)</span>
+              <input
+                placeholder="e.g. PRDFSI-150"
+                value={options.ecuIssueKey}
+                onChange={(event) => updateOption('ecuIssueKey', event.target.value.trim().toUpperCase())}
+              />
+            </label>
+            <p>Leave blank to preview a new ECU. Nothing is sent to Jira from this page.</p>
           </div>
+          <details className="advanced-settings">
+            <summary>Advanced settings</summary>
+            <div className="jira-options">
+              <label>
+                <span>Project key</span>
+                <input
+                  value={options.projectKey}
+                  onChange={(event) => updateOption('projectKey', event.target.value.trim().toUpperCase())}
+                />
+              </label>
+              <label>
+                <span>ECU issue type</span>
+                <input
+                  value={options.ecuIssueType}
+                  onChange={(event) => updateOption('ecuIssueType', event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Block issue type</span>
+                <input
+                  value={options.childIssueType}
+                  onChange={(event) => updateOption('childIssueType', event.target.value)}
+                />
+              </label>
+              {options.granularity === 'nested' ? (
+                <label>
+                  <span>Step sub-task type</span>
+                  <input
+                    value={options.stepIssueType}
+                    onChange={(event) => updateOption('stepIssueType', event.target.value)}
+                  />
+                </label>
+              ) : null}
+              <label>
+                <span>Extra labels</span>
+                <input
+                  placeholder="e.g. Mule VFF"
+                  value={labelText}
+                  onChange={(event) => handleLabels(event.target.value)}
+                />
+              </label>
+              <div className="jira-options__granularity">
+                <span>Ticket structure</span>
+                <div className="status-segment jira-segment" role="group" aria-label="Ticket granularity">
+                  {(['nested', 'block', 'step'] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={options.granularity === value}
+                      onClick={() => updateOption('granularity', value)}
+                    >
+                      {value === 'nested' ? 'Block + steps' : value === 'step' ? 'Step only' : 'Block only'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </details>
         </form>
       </section>
 
       {plan ? (
         <>
-          <section className="summary-strip jira-summary" aria-label="Ticket plan summary">
+          <section ref={previewRef} className="summary-strip jira-summary" aria-label="Ticket plan summary">
             <EcuCard plan={plan} />
             <div className="summary-metrics">
               <JiraMetric label="Blocks" value={plan.stats.blocks} />
@@ -234,25 +260,29 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
               <JiraMetric label="Warnings" value={plan.warnings.length} tone={plan.warnings.length ? 'changed' : undefined} />
             </div>
             <div className="spec-pair spec-pair--right jira-actions">
-              <span>Dry run — nothing is sent to Jira</span>
-              <div>
-                <button
-                  className="export-button"
-                  type="button"
-                  onClick={() => downloadText(`${exportBaseName(plan)}.csv`, toJiraCsv(plan), 'text/csv')}
-                >
-                  Export Jira CSV
-                </button>
-                <button
-                  className="export-button"
-                  type="button"
-                  onClick={() =>
-                    downloadText(`${exportBaseName(plan)}.json`, toPlanJson(plan), 'application/json')
-                  }
-                >
-                  Export JSON
-                </button>
-              </div>
+              <span>Preview ready</span>
+              <a className="primary-link" href="#/review">Review Jira changes <span aria-hidden="true">→</span></a>
+              <details className="plan-exports">
+                <summary>Download ticket plan</summary>
+                <div>
+                  <button
+                    className="export-button"
+                    type="button"
+                    onClick={() => downloadText(`${exportBaseName(plan)}.csv`, toJiraCsv(plan), 'text/csv')}
+                  >
+                    Export Jira CSV
+                  </button>
+                  <button
+                    className="export-button"
+                    type="button"
+                    onClick={() =>
+                      downloadText(`${exportBaseName(plan)}.json`, toPlanJson(plan), 'application/json')
+                    }
+                  >
+                    Export JSON
+                  </button>
+                </div>
+              </details>
             </div>
           </section>
 
@@ -302,6 +332,7 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
           <div>
             <span className="empty-state__mark">IB1</span>
             <h2>Load an IB1 XML to preview Jira tickets</h2>
+            <p>We identify blocks and steps automatically. Review the plan before preparing Jira changes.</p>
           </div>
         </section>
       )}
@@ -318,7 +349,10 @@ function EcuCard({ plan }: { plan: JiraTicketPlan }) {
         {ecu.issueType} · ECU {ecu.ecuId}
       </span>
       <strong>{ecu.existingIssueKey ? `${ecu.existingIssueKey} (existing)` : `New: ${ecu.summary}`}</strong>
-      <code title="Use this JQL to find an existing ECU ticket">{ecu.lookupJql}</code>
+      <details className="lookup-details">
+        <summary>Find this ECU in Jira</summary>
+        <code>{ecu.lookupJql}</code>
+      </details>
     </div>
   )
 }
@@ -347,7 +381,8 @@ function TicketList({ tickets, selectedKey, onSelect }: TicketListProps) {
     <div className="diff-list">
       {tickets.map((ticket, index) => {
         const startsGroup = index === 0 || tickets[index - 1].blockKey !== ticket.blockKey
-        const showGroup = startsGroup && ticket.kind !== 'block'
+        const followsBlock = tickets[index - 1]?.kind === 'block'
+        const showGroup = ticket.kind !== 'block' && (startsGroup || followsBlock)
 
         return (
           <div key={ticket.ibKey} className="jira-ticket-row">
@@ -384,7 +419,10 @@ type TicketDetailProps = {
 function TicketDetail({ plan, ticket, view, onView }: TicketDetailProps) {
   const [copied, setCopied] = useState(false)
   const wiki = ticketWikiDescription(ticket)
-  const parent = plan.ecu.existingIssueKey || `New ${plan.ecu.issueType} "${plan.ecu.summary}"`
+  const parentTicket = ticket.parentIbKey ? plan.tickets.find((candidate) => candidate.ibKey === ticket.parentIbKey) : null
+  const parent = parentTicket
+    ? `New ${parentTicket.issueType} "${parentTicket.summary}"`
+    : plan.ecu.existingIssueKey || `New ${plan.ecu.issueType} "${plan.ecu.summary}"`
 
   async function copyWiki() {
     await navigator.clipboard.writeText(wiki)
