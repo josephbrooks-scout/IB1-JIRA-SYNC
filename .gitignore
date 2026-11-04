@@ -27,6 +27,8 @@ dist-ssr
 .env
 .env.*
 !.env.example
+!.env.oauth.example
 
 # Sync run reports may contain confidential IB1 content
 ib1-sync-report*.json
+jira-baseline.local.json

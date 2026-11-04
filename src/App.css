@@ -1322,6 +1322,66 @@
   background: var(--surface);
 }
 
+.local-jira-connection {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.local-jira-connection h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.offline-snapshot {
+  margin-bottom: 20px;
+}
+
+.offline-snapshot textarea,
+.offline-snapshot input[type='search'],
+.offline-snapshot select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 8px 0;
+}
+
+.offline-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+
+.offline-content > div {
+  min-width: 0;
+}
+
+.offline-content pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 400px;
+  overflow: auto;
+}
+
+.local-jira-connection button {
+  margin-top: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.local-jira-connection ul {
+  max-height: 360px;
+  overflow: auto;
+  padding-left: 24px;
+  overflow-wrap: anywhere;
+}
+
+.local-jira-connection li {
+  margin: 8px 0;
+}
+
 .jira-account-guide summary {
   font-size: 13px;
   font-weight: 700;

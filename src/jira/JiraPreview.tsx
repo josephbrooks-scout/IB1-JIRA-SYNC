@@ -11,6 +11,7 @@ import {
 } from './ib1JiraPlan.ts'
 import { ticketWikiDescription, toJiraCsv, toJiraWikiMarkup, toPlanJson } from './exporters.ts'
 import { TicketWorkflow } from './TicketWorkflow.tsx'
+import { OfflineSnapshot } from './OfflineComparison.tsx'
 
 type LoadedXml = {
   fileName: string
@@ -140,6 +141,7 @@ export function JiraPreview({ hidden }: { hidden?: boolean }) {
         onLoad={() => setupRef.current?.scrollIntoView({ block: 'start' })}
         onPreview={() => previewRef.current?.scrollIntoView({ block: 'start' })}
       />
+      <OfflineSnapshot plan={plan} />
       <section ref={setupRef} className="jira-setup" aria-label="IB1 file and Jira settings">
         <label
           className={`file-slot ${dragging ? 'is-dragging' : ''}`}

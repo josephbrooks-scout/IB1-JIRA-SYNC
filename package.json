@@ -20,7 +20,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "jira:plan": "node scripts/ib1-jira-plan.ts",
-    "jira:sync": "node scripts/ib1-jira-sync.ts"
+    "jira:sync": "node scripts/ib1-jira-sync.ts",
+    "jira:local": "node scripts/ib1-jira-local.ts"
   },
   "dependencies": {
     "react": "^19.2.8",

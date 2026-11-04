@@ -1,3 +1,5 @@
+import { LocalJiraConnection } from './LocalJiraConnection'
+
 type TicketWorkflowProps = {
   stage: 'load' | 'preview' | 'review'
   onLoad?: () => void
@@ -27,6 +29,7 @@ export function TicketWorkflow({ stage, onLoad, onPreview }: TicketWorkflowProps
         </li>
       </ol>
       <p>Preview only. Jira changes require your approval.</p>
+      <LocalJiraConnection />
       <details className="jira-account-guide">
         <summary>Use Jira with your own account</summary>
         <p>

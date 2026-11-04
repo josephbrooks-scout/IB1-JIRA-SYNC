@@ -9,6 +9,7 @@ export type JiraIssueRef = {
     status?: { name: string }
     labels?: string[]
     issuetype?: { name: string }
+    parent?: { key: string }
   }
   properties?: Record<string, unknown>
 }
@@ -45,9 +46,12 @@ export type JiraConnection = {
   baseUrl: string
   email: string
   apiToken: string
+} | {
+  baseUrl: string
+  accessToken: string
 }
 
-const ISSUE_FIELDS = ['summary', 'description', 'status', 'labels', 'issuetype']
+const ISSUE_FIELDS = ['summary', 'description', 'status', 'labels', 'issuetype', 'parent']
 const MAX_ATTEMPTS = 4
 
 export class JiraRequestError extends Error {
@@ -61,7 +65,9 @@ export class JiraRequestError extends Error {
 
 export function createJiraRestClient(connection: JiraConnection, fetchImpl: typeof fetch = fetch): JiraApi {
   const baseUrl = connection.baseUrl.replace(/\/+$/, '')
-  const authorization = `Basic ${btoa(`${connection.email}:${connection.apiToken}`)}`
+  const authorization = 'accessToken' in connection
+    ? `Bearer ${connection.accessToken}`
+    : `Basic ${btoa(`${connection.email}:${connection.apiToken}`)}`
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     for (let attempt = 1; ; attempt += 1) {

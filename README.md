@@ -53,6 +53,56 @@ they can contain document and Jira content. If no required credentials are confi
 with an explicit missing-credentials error before contacting Jira. A static GitHub Pages site
 does not provide direct Jira login or sync; those operations remain local to each user.
 
+### Offline Jira CSV Comparison
+
+On the ticket preview page, expand **Compare with a Jira CSV export (offline)**.
+Import authorized **CSV (all fields)** exports with Issue key, Issue id, Summary,
+Description, Issue Type, Status, and Parent key columns. Repeated Labels columns
+are supported. The files are processed only in your browser and must not be
+committed to the public repository.
+
+Start with `key = PRDFSI-35 OR parent = PRDFSI-35 ORDER BY key`. This exports
+only the root and its direct children, not the whole hierarchy. The importer
+generates the next-level JQL from the imported parent keys. Export those search
+results and add the CSV; repeat to collect blocks and steps. Conflicting duplicate
+records are rejected rather than overwritten; clear the snapshot before loading
+a fresh capture. Permissions and export limits can still conceal issues.
+
+Load an IB1 XML and manually select the corresponding exported ECU to see
+snapshot versus proposed descriptions. Search snapshot ECUs by Jira key, name,
+or diagnostic identifier in the summary; all search terms must match, ignoring
+case. Filtering retains the current selection even when it is outside the results.
+Stable IB1 sync-key description footers
+are used only within the expected parent; summary/type matches are unverified
+candidates. CSV lacks issue sync properties, and description formatting may
+differ from generated wiki markup. This view does not compare the ECU description
+or classify additions/removals: unmatched rows mean **coverage unknown**.
+The load timestamp is not an authenticated export capture time.
+
+Offline results are not live Jira review reports and cannot export approvals for
+the sync CLI. Re-read Jira and complete the normal approval workflow before any
+live changes. No OAuth or API token is needed for offline comparison.
+
+#### Private Local Default Baseline
+
+The local development server and local OAuth prototype can automatically load
+`jira-baseline.local.json` from the repository root. This ignored file is never
+imported into the application bundle or copied to `dist/`. It contains version,
+snapshotDate (`YYYY-MM-DD`), coverage notes, and minimized comparison issue
+records; no separate assignee, reporter, or account columns are retained.
+The interface prominently displays the baseline version, user-supplied snapshot
+date, and coverage. CSV imports supplement it without changing its version/date;
+**Reset to baseline** removes those overlays.
+
+Baseline data is served only to loopback requests with a local host and
+same-origin checks. Network visitors and the public Pages build do not receive
+it. Vite also denies direct access to the private JSON file. The server rereads
+the file on each request; reload the page after deliberately replacing a baseline.
+Never put this file in `public/`, source control, or shared static hosting.
+Teammates on other computers still need their own authorized local baseline or
+CSV export. `npm run serve` is a static preview, not a private baseline server;
+use `npm run dev` or the local OAuth prototype instead.
+
 ### Website Deployment
 
 The [Pages workflow](.github/workflows/pages.yml) validates `main` and uploads only `dist/`
@@ -60,6 +110,43 @@ to GitHub Pages. Enable **Settings → Pages → Source: GitHub Actions** on Git
 It requires no Jira credentials or repository secrets. Every push to `main` redeploys the site.
 Pages is enabled using GitHub Actions for this public repository. Private repository
 Pages availability depends on the GitHub account plan.
+
+### Local OAuth Prototype (Read Only)
+
+This is a local proof of connection, not a deployed backend for GitHub Pages.
+It reads PRDFSI-35 and its descendant issues using the signed-in user's Jira
+permissions. It does not yet compare those results against XML or produce a
+review report, and exposes no Jira write endpoints. Existing report review and
+approval requirements remain unchanged.
+
+1. In the Atlassian developer console, create one OAuth 2.0 integration for the tool.
+   Under **Permissions → Jira API → Classic scopes**, enable only `read:jira-work`.
+2. Under **Authorization**, configure OAuth 2.0 (3LO) with this exact callback:
+   `http://localhost:5184/auth/callback`. Do not use the GitHub Pages URL as the callback.
+3. Copy `.env.oauth.example` to `.env.oauth.local`. In a local editor, fill in
+   the client ID and client secret from the app's settings. Never paste the secret
+   into chat, commit it, put it in a `VITE_` variable, or send it to the browser.
+   This file is ignored by Git and Vite does not load it.
+4. Run `npm run build`, then `npm run jira:local` from the repository directory.
+5. Open <http://localhost:5184>, select **Connect Jira**, and authorize access
+   to `scoutmotors.atlassian.net`. Then select **Load / refresh PRDFSI-35**.
+
+The server binds only to `127.0.0.1`. Use `localhost`, not a network IP or
+`127.0.0.1`, in the browser so cookies, host validation, and callback URLs match.
+Tokens are stored only in server memory, never browser storage or logs. Sessions
+expire after at most one hour; sign in again when expired. There are no refresh
+tokens in this prototype. **Disconnect** clears the local session; it does not
+revoke the app's grant in Atlassian. Restarting the process also clears sessions.
+To revoke the grant, use your Atlassian account's connected-app settings.
+
+Hierarchy searches include pagination and follow parent relationships. Issues
+hidden by Jira permissions cannot be shown; issue links and other relationships
+are not treated as parent-child relationships. More than 5,000 issues causes an
+explicit error rather than returning an incomplete hierarchy.
+
+For teammate access, IT still needs to approve backend hosting, token/session
+storage, and OAuth app distribution. Do not expose this development server on the
+network or reuse its HTTP-only local cookie configuration for production.
 
 ## Requirements
 
