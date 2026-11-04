@@ -12,9 +12,9 @@ The web page reads files locally in the browser; they are not uploaded to a serv
 
 ## Sharing With Teammates
 
-Preview/review website URL once Pages is enabled and deployment succeeds:
+Preview/review website:
 <https://josephbrooks-scout.github.io/IB1-JIRA-SYNC/>.
-The intended website is publicly accessible; repository access is separately controlled by GitHub.
+The website and source repository are publicly accessible.
 It contains only the built application, not credentials, sample source documents, or Jira review reports.
 Uploaded files are processed in the visitor's browser. The hosted website never asks for or stores Jira tokens.
 
@@ -58,12 +58,8 @@ does not provide direct Jira login or sync; those operations remain local to eac
 The [Pages workflow](.github/workflows/pages.yml) validates `main` and uploads only `dist/`
 to GitHub Pages. Enable **Settings → Pages → Source: GitHub Actions** on GitHub.
 It requires no Jira credentials or repository secrets. Every push to `main` redeploys the site.
-The repository does not need to be made public. Pages availability for private repositories depends
-on the GitHub account plan; never change repository visibility to work around that limitation.
-The current account rejected Pages activation for this private repository with
-`Your current plan does not support GitHub Pages for this repository.`
-The URL will not work until Pages is enabled on a supported plan or the app is deployed
-to another approved static host. Teammates can still clone and run it locally.
+Pages is enabled using GitHub Actions for this public repository. Private repository
+Pages availability depends on the GitHub account plan.
 
 ## Requirements
 
